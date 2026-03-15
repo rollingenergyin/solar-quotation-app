@@ -1,0 +1,19 @@
+# Render Blueprint - Solar Quotation App
+# https://docs.render.com/blueprint-spec
+
+services:
+  # Frontend (Next.js)
+  - type: web
+    name: solar-quotation-frontend
+    runtime: node
+    rootDir: apps/frontend
+
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Add NEXT_PUBLIC_API_URL for your backend API (set in Render dashboard)
+      # - key: NEXT_PUBLIC_API_URL
+      #   sync: false
