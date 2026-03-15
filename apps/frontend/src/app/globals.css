@@ -1,0 +1,173 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground: #171717;
+  --background: #f9fafb;
+  --solar-primary: #6690cc;
+  --solar-dark: #161c34;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ─── Quotation page sheet ─────────────────────────────────────────────────── */
+.quotation-page {
+  width: 210mm;
+  max-width: 210mm;
+  height: 297mm;
+  margin: 0 auto;
+  background: white;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  page-break-after: always;
+  break-after: page;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.quotation-page:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+/* Content area: fills space between header and footer */
+.quotation-page > .flex-1 {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  max-width: 210mm;
+}
+
+/* Header: fixed at top, no margin collapse */
+.quotation-page header {
+  position: relative;
+  top: 0;
+  flex-shrink: 0;
+  margin: 0;
+  margin-top: 0;
+}
+
+/* Footer: fixed at bottom */
+.quotation-page footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: 210mm;
+  flex-shrink: 0;
+}
+
+/* Prevent page breaks inside sections and tables */
+.quotation-page .quotation-section,
+.quotation-page table,
+.quotation-page [role="table"],
+.quotation-page .quotation-no-break {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+/* ─── Print media ──────────────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 210mm !important;
+    min-width: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Hide toolbar */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Remove margins from layout wrappers when printing */
+  body > * {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Quotation wrapper: no margins or padding */
+  #quotation-root,
+  .quotation-wrapper {
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    background: white !important;
+    width: 210mm !important;
+    max-width: 210mm !important;
+  }
+
+  .quotation-page {
+    page-break-after: always;
+    break-after: page;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+
+  /* Ensure gradients & colours print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+}
+
+/* ─── Screen wrapper for quotation preview ──────────────────────────────────── */
+.quotation-wrapper {
+  background: #e5e7eb;
+  padding: 32px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  min-height: 100vh;
+}
+
+.quotation-wrapper .quotation-page {
+  box-shadow: 0 4px 24px rgba(22, 28, 52, 0.12);
+}
+
+/* PDF capture: remove spacing only, preserve layout */
+.quotation-wrapper.pdf-capturing {
+  padding: 0;
+  gap: 0;
+  background: white;
+}
+
+/* Hide decorative accent bars during PDF to prevent dark column artifacts */
+.quotation-wrapper.pdf-capturing .no-pdf-accent {
+  display: none !important;
+}
+
+/* ─── Shared input utility ─────────────────────────────────────────────────── */
+@layer components {
+  .input {
+    @apply w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-solar-400;
+  }
+}

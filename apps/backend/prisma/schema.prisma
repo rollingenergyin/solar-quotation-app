@@ -1,0 +1,474 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Roles ───────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  SALES
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  userId       String     @unique  // Login identifier (e.g. sales01)
+  email        String     @unique
+  password     String
+  name         String
+  phone        String?
+  designation  String?
+  role         Role       @default(SALES)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  customers           Customer[]
+  quotations          Quotation[]
+  formulaVersions     FormulaVersion[]
+  weeklyPrices        WeeklyPrice[]
+  auditLogs           AuditLog[]
+  quotationTemplates  QuotationTemplate[]
+
+  @@map("users")
+}
+
+// ─── Customers ───────────────────────────────────────────────────────────────
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  city      String?
+  state     String?
+  pincode   String?
+  company   String?
+  gstin     String?
+  notes     String?
+  createdById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  sites     Site[]
+  quotations Quotation[]
+
+  @@map("customers")
+}
+
+// ─── Site Details ────────────────────────────────────────────────────────────
+
+enum RoofType {
+  FLAT
+  SLOPED
+  METAL
+  TERRACE
+  GROUND_MOUNTED
+}
+
+model Site {
+  id           String    @id @default(cuid())
+  customerId   String
+  name         String?
+  address      String
+  city         String?
+  state        String?
+  pincode      String?
+  roofType     RoofType?
+  roofAreaSqM  Float?
+  orientation  String?   // N, S, E, W, NE, etc.
+  tiltAngle    Float?
+  latitude     Float?
+  longitude    Float?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  customer        Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  electricityBills ElectricityBill[]
+  quotations      Quotation[]
+
+  @@map("sites")
+}
+
+// ─── OCR Bills & Monthly Units ───────────────────────────────────────────────
+
+enum BillSource {
+  MANUAL
+  OCR
+}
+
+model ElectricityBill {
+  id          String    @id @default(cuid())
+  siteId      String
+  month       Int       // 1-12
+  year        Int
+  unitsKwh    Float     // monthly consumption
+  amount      Float?    // bill amount in rupees
+  billImageUrl String?
+  ocrRawData  Json?     // raw OCR output for reference
+  source      BillSource @default(MANUAL)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, month, year])
+  @@map("electricity_bills")
+}
+
+// ─── Materials & Specs ───────────────────────────────────────────────────────
+
+enum MaterialUnit {
+  WATT
+  PIECE
+  METER
+  KW
+  SET
+}
+
+model MaterialCategory {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  materials Material[]
+
+  @@map("material_categories")
+}
+
+model Material {
+  id         String       @id @default(cuid())
+  categoryId String
+  name       String
+  brand      String?
+  model      String?
+  specs      Json?        // { wattage, efficiency, warrantyYears, capacity, etc. }
+  unit       MaterialUnit @default(PIECE)
+  basePrice  Float?
+  isActive   Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  category           MaterialCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  quotationMaterials QuotationMaterial[]
+  weeklyPrices       WeeklyPrice[]
+
+  @@map("materials")
+}
+
+// ─── Pricing Types ───────────────────────────────────────────────────────────
+
+model PricingType {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  unit        String   // WATT, UNIT, SQ_M, LUMP
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  quotationPricings QuotationPricing[]
+
+  @@map("pricing_types")
+}
+
+// ─── Editable Formulas ───────────────────────────────────────────────────────
+
+model Formula {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions FormulaVersion[]
+
+  @@map("formulas")
+}
+
+model FormulaVersion {
+  id          String   @id @default(cuid())
+  formulaId   String
+  expression  String   // e.g. "totalWattage * pricePerWatt"
+  variables   Json     // ["totalWattage", "pricePerWatt"]
+  description String?
+  isActive    Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  formula   Formula @relation(fields: [formulaId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  quotationPricings QuotationPricing[]
+
+  @@map("formula_versions")
+}
+
+// ─── Quotations ──────────────────────────────────────────────────────────────
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+enum SystemType {
+  DCR
+  NON_DCR
+}
+
+enum SiteType {
+  RESIDENTIAL
+  SOCIETY
+  COMMERCIAL
+  INDUSTRIAL
+}
+
+enum QuotationType {
+  QUICK
+  NORMAL
+}
+
+model Quotation {
+  id          String          @id @default(cuid())
+  customerId  String
+  siteId      String
+  quoteNumber String          @unique
+  status      QuotationStatus  @default(DRAFT)
+  systemType        SystemType      @default(DCR)
+  siteType          SiteType        @default(RESIDENTIAL)
+  sanctionedLoadKw  Float?
+  inverterSizeKw    Float?
+  validUntil        DateTime?
+  totalWattage Float?
+  totalAmount  Float?
+  notes       String?
+  createdById String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // Saved Quotations System
+  quotationType     QuotationType  @default(NORMAL)
+  version           Int            @default(1)
+  parentQuotationId String?
+  quotationDataJson Json?          // Full snapshot for edit/replay
+  generatedPdfPath  String?       // Path to stored PDF file
+
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site       Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  createdBy  User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  parent     Quotation?  @relation("QuotationVersions", fields: [parentQuotationId], references: [id], onDelete: SetNull)
+  versions   Quotation[] @relation("QuotationVersions")
+  materials  QuotationMaterial[]
+  pricings   QuotationPricing[]
+  result     QuotationResult?
+
+  @@map("quotations")
+}
+
+// Single row for QT-0001, QT-0002 sequence (id = 'main')
+model QuotationSequence {
+  id        String   @id @default("main")
+  nextValue Int      @default(1)
+  updatedAt DateTime @updatedAt
+  @@map("quotation_sequence")
+}
+
+model QuotationMaterial {
+  id           String   @id @default(cuid())
+  quotationId  String
+  materialId   String
+  quantity     Float
+  unitPrice    Float
+  totalPrice   Float
+  specsOverride Json?   // overrides for this line item
+  notes        String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  material Material   @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@map("quotation_materials")
+}
+
+model QuotationPricing {
+  id             String   @id @default(cuid())
+  quotationId    String
+  pricingTypeId  String
+  formulaVersionId String?
+  value          Float    // e.g. price per watt
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  quotation      Quotation      @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  pricingType    PricingType    @relation(fields: [pricingTypeId], references: [id], onDelete: Restrict)
+  formulaVersion FormulaVersion? @relation(fields: [formulaVersionId], references: [id], onDelete: SetNull)
+
+  @@unique([quotationId, pricingTypeId])
+  @@map("quotation_pricings")
+}
+
+// ─── Weekly Material Pricing ─────────────────────────────────────────────────
+
+model WeeklyPrice {
+  id         String   @id @default(cuid())
+  materialId String
+  pricePerUnit Float
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  notes      String?
+  createdById String
+  createdAt  DateTime @default(now())
+
+  material  Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@map("weekly_prices")
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String   // CREATE | UPDATE | DELETE
+  entity     String   // material | formula | pricing | bill
+  entityId   String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("audit_logs")
+}
+
+// ─── System Parameters ────────────────────────────────────────────────────────
+
+model SystemParam {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  label       String
+  value       Float
+  unit        String?
+  description String?
+  category    String   @default("general")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_params")
+}
+
+// ─── Editable Quotation Template ─────────────────────────────────────────────
+
+model QuotationTemplate {
+  id      String  @id @default(cuid())
+  version Int     @default(1)
+  name    String  @default("Default Template")
+  isActive Boolean @default(false)
+  isDeleted Boolean @default(false)
+  isDefaultTemplate Boolean @default(false)
+
+  // Template selection conditions (for automatic matching)
+  // systemType: DCR | NON_DCR | ANY (ANY = matches any, e.g. for Commercial/Industrial)
+  // siteType: RESIDENTIAL | SOCIETY | COMMERCIAL | INDUSTRIAL | ANY (ANY = fallback)
+  systemType String @default("ANY")
+  siteType   String @default("ANY")
+
+  // Company branding
+  companyName    String  @default("Rolling Energy")
+  companyTagline String? @default("Solar EPC Company")
+  companyAddress String? @default("2nd Floor, Solar Plaza, Baner Road, Pune 411045, Maharashtra")
+  companyPhone   String? @default("+91 98765 43210")
+  companyEmail   String? @default("info@rollingenergy.in")
+  companyWebsite String? @default("www.rollingenergy.in")
+
+  // Warranty configuration
+  panelWarrantyYears Int @default(25)
+
+  // BOM configuration (admin controls)
+  bomShowQty  Boolean @default(false)
+  bomShowUnit Boolean @default(false)
+  bomItems    Json?   // TemplateBomItem[] — null means use system default
+
+  // Subsidy configuration (DCR only)
+  subsidyResidential1kw     Float @default(30000)
+  subsidyResidential2kw     Float @default(60000)
+  subsidyResidential3to10kw Float @default(78000)
+  subsidySocietyPerKw       Float @default(18000)
+
+  // Depreciation configuration (Non-DCR systems)
+  depreciationNote  String  @default("This solar installation may qualify for accelerated depreciation benefits under applicable tax rules. Assets used for business purposes are eligible for depreciation under the Income Tax Act.")
+  depreciationTable Json    // {year:string, rate:string, note:string}[]
+
+  // Editable page content (stored as JSON arrays/objects)
+  introLetterBody     Json  // string[]
+  aboutParagraphs     Json  // string[]
+  aboutMission        String
+  aboutStats          Json  // {label:string, value:string}[]
+  aboutHighlights     Json  // {icon,title,desc}[]
+  processSteps        Json  // {step,title,subtitle,desc,icon,duration}[]
+  processTimelineText String @default("Total Timeline: 10–18 Working Days")
+  maintenanceServices Json  // {icon,title,desc}[]
+  warrantyItems       Json  // {item,warranty}[]
+  paymentMilestones   Json  // {step,title,pct,desc,icon}[]
+  paymentTermsBullets Json  // string[]
+  paymentModes        Json  // {icon,label}[]
+  whyReasons          Json  // {icon,title,desc}[]
+  testimonials        Json  // {name,location,text}[]
+  certifications      Json  // string[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("quotation_templates")
+}
+
+// ─── ROI & EMI Results ───────────────────────────────────────────────────────
+
+model QuotationResult {
+  id                  String   @id @default(cuid())
+  quotationId         String   @unique
+  roiYears            Float?    // years to break even
+  roiPercentage       Float?   // annual ROI %
+  emiMonthly          Float?
+  emiTenureMonths     Int?
+  totalSavings        Float?   // lifetime savings estimate
+  paybackPeriodMonths Int?
+  breakdown           Json?    // { yearlySavings: [], emiSchedule: [] }
+  notes               String?
+  calculatedAt        DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@map("quotation_results")
+}
