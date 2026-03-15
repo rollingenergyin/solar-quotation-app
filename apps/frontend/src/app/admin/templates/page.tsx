@@ -23,7 +23,7 @@ const SITE_TYPE_LABELS: Record<string, string> = {
   RESIDENTIAL: 'Residential', SOCIETY: 'Society', COMMERCIAL: 'Commercial', INDUSTRIAL: 'Industrial', ANY: 'Any',
 };
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+import { API_URL } from '@/lib/api';
 
 function authHeaders(): Record<string, string> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -46,7 +46,7 @@ export default function TemplatesListPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const url = showDeleted ? `${API}/templates?includeDeleted=1` : `${API}/templates`;
+      const url = showDeleted ? `${API_URL}/templates?includeDeleted=1` : `${API_URL}/templates`;
       const res = await fetch(url, { headers: authHeaders() });
       if (!res.ok) throw new Error(await res.text());
       setTemplates(await res.json());
@@ -61,7 +61,7 @@ export default function TemplatesListPage() {
     if (!confirm(`Restore template "${name}"?`)) return;
     setRestoring(id);
     try {
-      const res = await fetch(`${API}/templates/${id}/restore`, { method: 'POST', headers: authHeaders() });
+      const res = await fetch(`${API_URL}/templates/${id}/restore`, { method: 'POST', headers: authHeaders() });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error || res.statusText);
@@ -75,7 +75,7 @@ export default function TemplatesListPage() {
   const activate = async (id: string) => {
     setActivating(id);
     try {
-      const res = await fetch(`${API}/templates/${id}/activate`, { method: 'POST', headers: authHeaders() });
+      const res = await fetch(`${API_URL}/templates/${id}/activate`, { method: 'POST', headers: authHeaders() });
       if (!res.ok) throw new Error(await res.text());
       await load();
     } catch (e: unknown) {
@@ -86,7 +86,7 @@ export default function TemplatesListPage() {
   const deactivate = async (id: string) => {
     setDeactivating(id);
     try {
-      const res = await fetch(`${API}/templates/${id}/deactivate`, { method: 'POST', headers: authHeaders() });
+      const res = await fetch(`${API_URL}/templates/${id}/deactivate`, { method: 'POST', headers: authHeaders() });
       if (!res.ok) throw new Error(await res.text());
       await load();
     } catch (e: unknown) {
@@ -98,7 +98,7 @@ export default function TemplatesListPage() {
     if (!confirm(`Delete template "${name}"? You can restore it later from the deleted list.`)) return;
     setDeleting(id);
     try {
-      const res = await fetch(`${API}/templates/${id}`, { method: 'DELETE', headers: authHeaders() });
+      const res = await fetch(`${API_URL}/templates/${id}`, { method: 'DELETE', headers: authHeaders() });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error || res.statusText);
@@ -114,7 +114,7 @@ export default function TemplatesListPage() {
     if (!name) return;
     setCloning(id);
     try {
-      const res = await fetch(`${API}/templates/${id}/clone`, {
+      const res = await fetch(`${API_URL}/templates/${id}/clone`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ name }),

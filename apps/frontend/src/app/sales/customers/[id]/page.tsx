@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, API_URL } from '@/lib/api';
 import ConsumptionChart from '@/components/ConsumptionChart';
 
 interface Customer { id: string; name: string; email?: string; phone?: string; city?: string; state?: string; company?: string; gstin?: string; address?: string }
@@ -151,7 +151,7 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
     try {
       const fd = new FormData(); fd.append('file', ocrFile);
       const token = localStorage.getItem('token');
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ocr/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      const res = await fetch(`${API_URL}/ocr/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
       const data = await res.json();
       setOcrReadings(data.monthlyReadings ?? []);
       setOcrWarnings(data.warnings ?? []);

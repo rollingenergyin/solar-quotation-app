@@ -1,4 +1,6 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+// Base URL must include /api - backend routes are under /api
+const RAW_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+export const API_URL = RAW_BASE.endsWith('/api') ? RAW_BASE : `${RAW_BASE.replace(/\/$/, '')}/api`;
 const FETCH_TIMEOUT_MS = 15000;
 
 function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {

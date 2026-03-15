@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { TemplateConfig, TemplateBomItem } from '@/types/quotation-template';
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+import { API_URL } from '@/lib/api';
 
 function authHeaders() {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -150,7 +150,7 @@ export default function TemplateEditorPage() {
   // For new template: load active template as base
   const loadTemplate = useCallback(async (templateId: string) => {
     try {
-      const url = templateId === 'new' ? `${API}/templates/active` : `${API}/templates/${templateId}`;
+      const url = templateId === 'new' ? `${API_URL}/templates/active` : `${API_URL}/templates/${templateId}`;
       const res = await fetch(url, { headers: authHeaders() });
       if (!res.ok) throw new Error('Failed to load template');
       const data = await res.json();
@@ -171,13 +171,13 @@ export default function TemplateEditorPage() {
     try {
       let res: Response;
       if (isNew) {
-        res = await fetch(`${API}/templates`, {
+        res = await fetch(`${API_URL}/templates`, {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify(template),
         });
       } else {
-        res = await fetch(`${API}/templates/${id}`, {
+        res = await fetch(`${API_URL}/templates/${id}`, {
           method: 'PUT',
           headers: authHeaders(),
           body: JSON.stringify(template),

@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { API_URL } from '@/lib/api';
 import QuotationPrint from '@/components/quotation/QuotationPrint';
 import type { QuotationTemplateData } from '@/types/quotation-template';
 
@@ -36,8 +37,7 @@ export default function QuotationPrintPage() {
   }, [token, pdfToken]);
 
   const templateDataUrl = useMemo(() => {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-    const url = new URL(`${base}/quotations/${id}/template-data`);
+    const url = new URL(`${API_URL}/quotations/${id}/template-data`);
     if (pdfToken) url.searchParams.set('pdf_token', pdfToken);
     return url.toString();
   }, [id, pdfToken]);

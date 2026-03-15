@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, API_URL } from '@/lib/api';
 import RollingEnergyLogo from '@/components/quotation/RollingEnergyLogo';
 
 interface Quotation {
@@ -63,9 +63,8 @@ export default function AdminAllQuotationsPage() {
   }, [load]);
 
   const downloadPdf = async (id: string) => {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    const res = await fetch(`${base}/quotations/${id}/pdf`, {
+    const res = await fetch(`${API_URL}/quotations/${id}/pdf`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) {
