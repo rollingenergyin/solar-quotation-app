@@ -185,10 +185,10 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
 
   const statusColors: Record<string, string> = { DRAFT: 'bg-gray-100 text-gray-600', SENT: 'bg-blue-100 text-blue-700', ACCEPTED: 'bg-green-100 text-green-700', REJECTED: 'bg-red-100 text-red-600' };
 
-  if (!customer) return <div className="p-8 text-sm text-gray-400">Loading…</div>;
+  if (!customer) return <div className="p-6 md:p-8 text-sm text-gray-400">Loading…</div>;
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-6 text-sm">
         <Link href="/sales/customers" className="text-gray-400 hover:text-gray-600">Customers</Link>
@@ -196,7 +196,7 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
         <span className="text-gray-800 font-medium">{customer.name}</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Left: Customer info + Sites */}
         <div className="space-y-4">
           {/* Customer Card */}
@@ -224,7 +224,7 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
                   className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400" />
                 <input placeholder="Site name (optional)" value={siteForm.name} onChange={(e) => setSiteForm({ ...siteForm, name: e.target.value })}
                   className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-yellow-400" />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   <select value={siteForm.roofType} onChange={(e) => setSiteForm({ ...siteForm, roofType: e.target.value })}
                     className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600">
                     <option value="">Roof type</option>

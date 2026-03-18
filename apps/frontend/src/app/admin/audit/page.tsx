@@ -44,7 +44,7 @@ export default function AuditPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
@@ -106,7 +106,7 @@ export default function AuditPage() {
                 {expanded === log.id && (
                   <tr key={`${log.id}-exp`} className="bg-gray-50">
                     <td colSpan={7} className="px-4 py-3">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {log.before != null ? (
                           <div>
                             <div className="text-xs font-semibold text-gray-500 mb-1">Before</div>

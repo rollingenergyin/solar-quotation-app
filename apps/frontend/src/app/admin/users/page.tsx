@@ -152,7 +152,7 @@ export default function AdminSalesUsersPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       <div className="flex items-center gap-4 mb-6">
         <RollingEnergyLogo variant="light" size="md" />
         <div>

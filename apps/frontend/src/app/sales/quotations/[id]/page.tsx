@@ -166,7 +166,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
   }[emiTab];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto w-full space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -199,7 +199,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* ── Left: Input form ── */}
         <div className="col-span-1 space-y-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">

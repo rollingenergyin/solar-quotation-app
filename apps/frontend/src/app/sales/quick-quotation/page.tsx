@@ -263,14 +263,14 @@ export default function QuickQuotationPage() {
       </div>
 
       {/* ── Body ───────────────────────────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto px-6 py-6 flex gap-6">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 flex flex-col lg:flex-row gap-6 w-full">
 
         {/* ── LEFT: Form ──────────────────────────────────────────────────── */}
         <div className="flex-1 space-y-5 min-w-0">
 
           {/* ── Section 1: Customer Info ─────────────────────────────────── */}
           <FormCard title="1. Customer Information" icon="👤">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="col-span-2">
                 <FieldLabel required>Customer Name</FieldLabel>
                 <input
@@ -308,7 +308,7 @@ export default function QuickQuotationPage() {
 
           {/* ── Section 2: System Type ──────────────────────────────────── */}
           <FormCard title="2. System Configuration" icon="⚙️">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <FieldLabel>System Type</FieldLabel>
                 <ToggleGroup
@@ -433,7 +433,7 @@ export default function QuickQuotationPage() {
 
           {/* ── Section 4: Pricing ─────────────────────────────────────── */}
           <FormCard title="4. Pricing" icon="💰">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <FieldLabel required>Base Price per Watt (₹/W)</FieldLabel>
                 <div className="flex items-center gap-2">
@@ -472,7 +472,7 @@ export default function QuickQuotationPage() {
 
           {/* ── Section 5: Quick Parameters ────────────────────────────── */}
           <FormCard title="5. Quick Parameters" icon="🔧">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <FieldLabel>Electricity Rate (₹ per unit)</FieldLabel>
                 <div className="flex items-center gap-2">

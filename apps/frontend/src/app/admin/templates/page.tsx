@@ -130,7 +130,7 @@ export default function TemplatesListPage() {
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-start justify-between mb-8">
         <div>

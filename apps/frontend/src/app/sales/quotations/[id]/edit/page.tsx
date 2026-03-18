@@ -111,14 +111,14 @@ export default function EditQuotationPage() {
   if (!quotation) return <div className="p-8 text-center text-red-500 text-sm">{error || 'Quotation not found'}</div>;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-4 md:p-6 max-w-2xl mx-auto w-full">
       <Link href="/sales/quotations" className="text-xs text-gray-400 hover:text-gray-600">← Saved Quotations</Link>
       <h1 className="text-2xl font-bold text-gray-900 mt-1">{quotation.quoteNumber}{quotation.version && quotation.version > 1 ? ` v${quotation.version}` : ''}</h1>
       <p className="text-sm text-gray-500 mt-0.5">{quotation.customer.name} · {quotation.site.address || '—'}</p>
       <p className="text-xs text-amber-600 mt-1">Editing will create a new version. The original version is preserved.</p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Price per Watt (₹)" value={pricePerWatt} onChange={setPricePerWatt} type="number" step="0.5" />
           <Field label="Electricity Tariff (₹/kWh)" value={electricityRate} onChange={setElectricityRate} type="number" step="0.5" />
           <Field label="System Size (kWp)" value={systemSizeKw} onChange={setSystemSizeKw} type="number" step="0.5" placeholder="Auto" />
@@ -153,7 +153,7 @@ export default function EditQuotationPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Profit Margin (%)" value={profitPct} onChange={setProfitPct} type="number" />
           <Field label="GST (%)" value={gstPct} onChange={setGstPct} type="number" />
           <Field label="Sanctioned Load (kW)" value={sanctionedLoadKw} onChange={setSanctionedLoadKw} type="number" placeholder="Optional" />

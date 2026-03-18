@@ -33,7 +33,7 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       <div className="flex items-center gap-4 mb-6">
         <RollingEnergyLogo variant="light" size="md" />
         <div>
@@ -42,7 +42,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-8 max-w-md">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 max-w-md">
         {cards.map((c) => (
           <div key={c.label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <div className={`w-8 h-8 rounded-lg ${c.color} mb-3`} />
