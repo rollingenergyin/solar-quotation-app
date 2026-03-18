@@ -151,7 +151,7 @@ export default function CustomerDetailPage({ params }: { params: { id: string } 
     try {
       const fd = new FormData(); fd.append('file', ocrFile);
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/ocr/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+      const res = await fetch(`${API_URL}/ocr/upload`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, credentials: 'include', body: fd });
       const data = await res.json();
       setOcrReadings(data.monthlyReadings ?? []);
       setOcrWarnings(data.warnings ?? []);

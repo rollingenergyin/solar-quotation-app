@@ -28,7 +28,14 @@ export default function LoginPage() {
       await login(emailOrUserId, password, rememberMe);
       router.replace('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+      const msg = err instanceof Error ? err.message : 'Login failed';
+      const isNetworkError =
+        /load failed|failed to fetch|network error|timeout/i.test(msg);
+      setError(isNetworkError ? 'Network error. Please try again.' : msg);
+      if (isNetworkError && typeof window !== 'undefined') {
+        console.error('LOGIN ERROR:', err);
+        alert('Network error. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

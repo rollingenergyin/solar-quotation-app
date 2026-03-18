@@ -151,7 +151,7 @@ export default function TemplateEditorPage() {
   const loadTemplate = useCallback(async (templateId: string) => {
     try {
       const url = templateId === 'new' ? `${API_URL}/templates/active` : `${API_URL}/templates/${templateId}`;
-      const res = await fetch(url, { headers: authHeaders() });
+      const res = await fetch(url, { headers: authHeaders(), credentials: 'include' });
       if (!res.ok) throw new Error('Failed to load template');
       const data = await res.json();
       setTemplate(isNew ? { ...data, id: undefined, name: `${data.name} (New Version)` } : data);
@@ -174,12 +174,14 @@ export default function TemplateEditorPage() {
         res = await fetch(`${API_URL}/templates`, {
           method: 'POST',
           headers: authHeaders(),
+          credentials: 'include',
           body: JSON.stringify(template),
         });
       } else {
         res = await fetch(`${API_URL}/templates/${id}`, {
           method: 'PUT',
           headers: authHeaders(),
+          credentials: 'include',
           body: JSON.stringify(template),
         });
       }

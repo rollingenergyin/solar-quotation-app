@@ -20,6 +20,12 @@ export async function api<T>(
     ...options.headers,
   };
 
+  const fetchOptions: RequestInit = {
+    ...options,
+    headers,
+    credentials: 'include',
+  };
+
   if (token) {
     (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   }
@@ -28,7 +34,7 @@ export async function api<T>(
   try {
     res = await fetchWithTimeout(
       `${API_URL}${path}`,
-      { ...options, headers },
+      fetchOptions,
       FETCH_TIMEOUT_MS
     );
   } catch (err) {

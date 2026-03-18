@@ -46,7 +46,7 @@ export default function QuotationPrintPage() {
     if (!id) return;
     if (!pdfToken && !token) return;
 
-    fetch(templateDataUrl, { headers: authHeaders })
+    fetch(templateDataUrl, { headers: authHeaders, credentials: 'include' })
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));

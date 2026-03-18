@@ -44,6 +44,7 @@ export default function SavedQuotationsPage() {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const res = await fetch(`${API_URL}/quotations/${id}/pdf`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
     });
     if (!res.ok) {
       alert('Failed to download PDF');
