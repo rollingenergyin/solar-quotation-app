@@ -810,9 +810,9 @@ router.get('/:id/pdf', authenticate, async (req: Request, res: Response, next: N
       const filePath = join(UPLOADS_DIR, q.generatedPdfPath);
       if (existsSync(filePath)) {
         const buf = await readFile(filePath);
-        const filename = q.generatedPdfPath.includes('/') ? q.generatedPdfPath.split('/').pop()! : q.generatedPdfPath;
+        const filename = q.quoteNumber ? `${q.quoteNumber}.pdf` : 'quotation.pdf';
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', String(buf.length));
         return res.end(buf);
       }

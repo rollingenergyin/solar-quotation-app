@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { api, API_URL } from '@/lib/api';
+import { api } from '@/lib/api';
+import { downloadQuotationPdf } from '@/lib/pdf-download';
 import RollingEnergyLogo from '@/components/quotation/RollingEnergyLogo';
 
 interface Quotation {
@@ -62,23 +63,8 @@ export default function AdminAllQuotationsPage() {
     load();
   }, [load]);
 
-  const downloadPdf = async (id: string) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    const res = await fetch(`${API_URL}/quotations/${id}/pdf`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      alert('Failed to download PDF');
-      return;
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${id}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const downloadPdf = (id: string, quoteNumber: string) => {
+    downloadQuotationPdf(id, quoteNumber, (msg) => alert(msg));
   };
 
   return (
@@ -148,7 +134,7 @@ export default function AdminAllQuotationsPage() {
                     <Link href={`/quotation/${q.id}/print`} target="_blank" className="text-sm font-medium text-gray-600 py-2 px-3 rounded-lg bg-gray-100 min-h-[44px] flex items-center">
                       View
                     </Link>
-                    <button type="button" onClick={() => downloadPdf(q.id)} className="text-sm font-medium text-blue-600 py-2 px-3 rounded-lg bg-blue-50 min-h-[44px]">
+                    <button type="button" onClick={() => downloadPdf(q.id, q.quoteNumber)} className="text-sm font-medium text-blue-600 py-2 px-3 rounded-lg bg-blue-50 min-h-[44px]">
                       Download
                     </button>
                   </div>
@@ -183,7 +169,7 @@ export default function AdminAllQuotationsPage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           <Link href={`/quotation/${q.id}/print`} target="_blank" className="text-xs font-medium text-gray-600 hover:text-gray-900">View</Link>
-                          <button type="button" onClick={() => downloadPdf(q.id)} className="text-xs font-medium text-blue-600 hover:text-blue-700">Download</button>
+                          <button type="button" onClick={() => downloadPdf(q.id, q.quoteNumber)} className="text-xs font-medium text-blue-600 hover:text-blue-700">Download</button>
                         </div>
                       </td>
                     </tr>
