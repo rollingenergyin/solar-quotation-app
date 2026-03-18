@@ -11,7 +11,7 @@ app.use(
     origin: [
       'http://localhost:3000',
       'https://solar-quotation-app.onrender.com',
-      ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+      'https://solar.rollingenergy.in',
     ],
     credentials: true,
   })

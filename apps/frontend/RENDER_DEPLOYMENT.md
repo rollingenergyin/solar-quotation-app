@@ -20,9 +20,7 @@ Next.js automatically binds to `process.env.PORT` when set by Render.
 
 ## Environment Variables
 
-Add in Render Dashboard → Environment:
-
-- `NEXT_PUBLIC_API_URL` — your backend API URL (e.g. `https://your-backend.onrender.com/api`)
+API calls use same-domain relative routing (`/api`). Ensure your deployment proxies `/api` to the backend, or configure rewrites as needed.
 
 ## Using Blueprint
 
