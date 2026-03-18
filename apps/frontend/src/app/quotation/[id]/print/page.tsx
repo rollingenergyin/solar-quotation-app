@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { API_URL } from '@/lib/api';
 import QuotationPrint from '@/components/quotation/QuotationPrint';
 import type { QuotationTemplateData } from '@/types/quotation-template';
 
@@ -37,13 +36,29 @@ export default function QuotationPrintPage() {
   }, [token, pdfToken]);
 
   const templateDataUrl = useMemo(() => {
-    const url = new URL(`${API_URL}/quotations/${id}/template-data`);
-    if (pdfToken) url.searchParams.set('pdf_token', pdfToken);
-    return url.toString();
+    try {
+      if (!id) return '';
+      if (typeof window === 'undefined') return '';
+
+      const url = new URL(
+        `/api/quotations/${id}/template-data`,
+        window.location.origin
+      );
+
+      if (pdfToken) {
+        url.searchParams.set('pdf_token', pdfToken);
+      }
+
+      return url.toString();
+    } catch (err) {
+      console.error('URL ERROR:', err);
+      return '';
+    }
   }, [id, pdfToken]);
 
   useEffect(() => {
     if (!id) return;
+    if (!templateDataUrl) return;
     if (!pdfToken && !token) return;
 
     fetch(templateDataUrl, { headers: authHeaders, credentials: 'include' })

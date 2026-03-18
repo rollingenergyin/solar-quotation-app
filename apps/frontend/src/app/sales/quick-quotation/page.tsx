@@ -53,7 +53,12 @@ function computeLive(
   systemType: string,
   siteType: string,
 ): LiveSummary | null {
-  if (systemSizeKw <= 0 || pricePerWatt <= 0) return null;
+  if (
+    typeof systemSizeKw !== 'number' || systemSizeKw <= 0 ||
+    typeof pricePerWatt !== 'number' || pricePerWatt <= 0 ||
+    !Number.isFinite(electricityRate) || electricityRate <= 0 ||
+    !Number.isFinite(peakSunHours) || peakSunHours <= 0
+  ) return null;
 
   const roofAreaSqft         = Math.round(systemSizeKw * 80);
   const dailyProductionKwh   = Math.round(systemSizeKw * peakSunHours * 10) / 10;
@@ -68,19 +73,39 @@ function computeLive(
   const annualSavings = Math.round(annualProductionKwh * electricityRate);
   const breakevenYears = annualSavings > 0 ? Math.round((netCost / annualSavings) * 10) / 10 : 0;
 
+  // Guard against Infinity/NaN
+  const safe = (x: number) => (Number.isFinite(x) ? x : 0);
   return {
-    systemSizeKw, roofAreaSqft, dailyProductionKwh, annualProductionKwh,
-    baseCost, gstAmount, grossCost, subsidyAmount, netCost,
-    annualSavings, breakevenYears,
-    pricePerWattEffective: pricePerWatt,
+    systemSizeKw: safe(systemSizeKw),
+    roofAreaSqft: safe(roofAreaSqft),
+    dailyProductionKwh: safe(dailyProductionKwh),
+    annualProductionKwh: safe(annualProductionKwh),
+    baseCost: safe(baseCost),
+    gstAmount: safe(gstAmount),
+    grossCost: safe(grossCost),
+    subsidyAmount: safe(subsidyAmount),
+    netCost: safe(netCost),
+    annualSavings: safe(annualSavings),
+    breakevenYears: safe(breakevenYears),
+    pricePerWattEffective: safe(pricePerWatt),
   };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
-const fmtL = (n: number) =>
-  n >= 100_000 ? `₹${(n / 100_000).toFixed(2)}L` : `₹${fmt(n)}`;
+const fmt = (n: number): string => {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '0';
+  try {
+    return n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  } catch {
+    return String(Math.round(n));
+  }
+};
+const fmtL = (n: number): string => {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return '₹0';
+  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
+  return `₹${fmt(n)}`;
+};
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -365,7 +390,7 @@ export default function QuickQuotationPage() {
                 <p className="text-xs text-gray-500 mb-3">
                   Enter the units consumed each month. You can leave months blank — average is calculated from filled months only.
                 </p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {MONTHS.map(m => (
                     <div key={m.key}>
                       <label className="text-xs text-gray-500 mb-1 block">{m.label}</label>
@@ -525,7 +550,7 @@ export default function QuickQuotationPage() {
           </FormCard>
 
           {/* ── Sanctioned Load Note (live preview) ─────────────────── */}
-          {sanctionedLoadKw && parseFloat(sanctionedLoadKw) > 0 && derivedSystemKw > 0 && (
+          {sanctionedLoadKw && Number.isFinite(parseFloat(sanctionedLoadKw)) && parseFloat(sanctionedLoadKw) > 0 && derivedSystemKw > 0 && (
             <div
               className="rounded-2xl px-5 py-4 border"
               style={{
@@ -562,7 +587,7 @@ export default function QuickQuotationPage() {
         </div>
 
         {/* ── RIGHT: Live Summary ──────────────────────────────────────────── */}
-        <div className="w-80 shrink-0">
+        <div className="w-full lg:w-80 shrink-0">
           <div className="sticky top-[73px] space-y-3">
 
             {/* Summary card */}
