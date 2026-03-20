@@ -138,7 +138,7 @@ export default function QuotationPrint({ data, isPdfMode = false, quotationId }:
       {/* ── All pages ──────────────────────────────────────────────────────── */}
       <div
         id="quotation-root"
-        className={`quotation-wrapper ${isPdfMode ? 'pdf-capturing w-[1200px] mx-auto' : 'w-full'}`}
+        className={`quotation-wrapper ${isPdfMode ? 'pdf-capturing w-[1200px] min-w-[1200px] mx-auto' : 'w-full'}`}
         data-pdf-ready="true"
       >
 
