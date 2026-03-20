@@ -11,9 +11,14 @@ export async function downloadQuotationPdf(
   const filename = quoteNumber ? `${quoteNumber}.pdf` : 'quotation.pdf';
 
   try {
-    const res = await fetch(`/api/quotations/${id}/pdf`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    const res = await fetch('/api/quotations/pdf', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       credentials: 'include',
+      body: JSON.stringify({ id }),
     });
 
     if (!res.ok) {

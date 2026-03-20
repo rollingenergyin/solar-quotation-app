@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1200">
+  <style>
+    * { box-sizing: border-box; }
+    img { max-width: 100%; }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      line-height: 1.4;
+      width: 210mm;
+      margin: 0;
+      padding: 20mm;
+      color: #1f2937;
+    }
+
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      display: block;
+    }
+
+    p { margin: 4px 0; }
+
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid #6690cc;
+    }
+    .header h1 { font-size: 24px; color: #161c34; }
+    .header .quote-number { font-size: 14px; color: #6b7280; margin-top: 4px; }
+
+    .section {
+      margin-bottom: 16px;
+    }
+    .section h2 {
+      font-size: 14px;
+      color: #6690cc;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .data-table td {
+      padding: 6px 0;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: top;
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table .label { color: #6b7280; font-size: 13px; }
+    .data-table .value { font-weight: 600; font-size: 14px; text-align: right; }
+
+    .total {
+      font-size: 18px;
+      font-weight: 700;
+      color: #161c34;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 2px solid #6690cc;
+    }
+
+    .page-break { page-break-after: always; }
+
+    @media print {
+      body { width: 210mm; margin: 0; }
+      .page-break { page-break-after: always; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <h1>Solar Quotation</h1>
+      <p class="quote-number">{{quoteNumber}} · {{date}}</p>
+    </div>
+
+    <div class="section">
+      <h2>Customer Details</h2>
+      <table class="data-table">
+        <tr><td class="label">Customer Name</td><td class="value">{{customerName}}</td></tr>
+        <tr><td class="label">Address</td><td class="value">{{address}}</td></tr>
+        <tr><td class="label">Contact</td><td class="value">{{contactPerson}}</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>System Configuration</h2>
+      <table class="data-table">
+        <tr><td class="label">System Size</td><td class="value">{{systemSize}} kW</td></tr>
+        <tr><td class="label">Inverter Capacity</td><td class="value">{{inverterSize}} kW</td></tr>
+        <tr><td class="label">Solar Modules</td><td class="value">{{numModules}} Panels</td></tr>
+        <tr><td class="label">Roof Area Required</td><td class="value">{{areaSqft}} sq.ft</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Energy Production (Estimated)</h2>
+      <table class="data-table">
+        <tr><td class="label">Daily Generation</td><td class="value">{{dailyProduction}} kWh/day</td></tr>
+        <tr><td class="label">Monthly Generation</td><td class="value">{{monthlyProduction}} kWh</td></tr>
+        <tr><td class="label">Annual Generation</td><td class="value">{{annualProduction}} kWh</td></tr>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>Cost Breakdown</h2>
+      <table class="data-table">
+        <tr><td class="label">Base Cost</td><td class="value">₹{{baseCost}}</td></tr>
+        <tr><td class="label">GST (8.9%)</td><td class="value">₹{{gstAmount}}</td></tr>
+        <tr><td class="label">Subsidy</td><td class="value">− ₹{{subsidyAmount}}</td></tr>
+      </table>
+      <div class="total">Net Payable: ₹{{netCost}}</div>
+    </div>
+
+    <div class="section">
+      <h2>Financial Benefits</h2>
+      <table class="data-table">
+        <tr><td class="label">Annual Savings</td><td class="value">₹{{annualSavings}}</td></tr>
+        <tr><td class="label">Breakeven Period</td><td class="value">{{breakevenYears}} years</td></tr>
+      </table>
+    </div>
+  </div>
+</body>
+</html>
