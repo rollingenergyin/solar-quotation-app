@@ -101,7 +101,15 @@ export async function generateQuotationPdf(
   const page = await browser.newPage();
 
   try {
-    await page.setViewport({ width: 794, height: 1123 }); // A4 at 96 DPI
+    await page.setViewport({
+      width: 1200,
+      height: 1600,
+      deviceScaleFactor: 1,
+    });
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+    await page.emulateMediaType('screen');
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
 
     const response = await page.goto(printUrl, {
@@ -128,6 +136,7 @@ export async function generateQuotationPdf(
       path: filePath,
       format: 'A4',
       printBackground: true,
+      preferCSSPageSize: true,
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
     });
 

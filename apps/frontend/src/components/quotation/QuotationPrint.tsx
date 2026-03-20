@@ -129,7 +129,11 @@ export default function QuotationPrint({ data, isPdfMode = false, quotationId }:
       )}
 
       {/* ── All pages ──────────────────────────────────────────────────────── */}
-      <div id="quotation-root" className="quotation-wrapper" data-pdf-ready="true">
+      <div
+        id="quotation-root"
+        className={`quotation-wrapper ${isPdfMode ? 'pdf-capturing' : ''}`}
+        data-pdf-ready="true"
+      >
 
         {/* Page 1 — Cover */}
         <CoverPage

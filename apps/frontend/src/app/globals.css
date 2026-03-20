@@ -154,8 +154,12 @@ body {
   box-shadow: 0 4px 24px rgba(22, 28, 52, 0.12);
 }
 
-/* PDF capture: remove spacing only, preserve layout */
+/* PDF capture: force desktop layout, remove spacing */
 .quotation-wrapper.pdf-capturing {
+  width: 1200px !important;
+  max-width: 1200px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
   padding: 0;
   gap: 0;
   background: white;
