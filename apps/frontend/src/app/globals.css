@@ -170,6 +170,21 @@ body {
   display: none !important;
 }
 
+/* ─── PDF mode: force desktop layout, disable responsive breakpoints ───────── */
+.pdf-mode {
+  width: 1200px !important;
+  max-width: 1200px !important;
+}
+
+.pdf-mode .quotation-wrapper,
+.pdf-mode #quotation-root,
+.pdf-mode .container {
+  width: 1200px !important;
+  max-width: 1200px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
 /* ─── Shared input utility ─────────────────────────────────────────────────── */
 @layer components {
   .input {
