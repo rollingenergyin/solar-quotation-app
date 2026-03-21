@@ -62,10 +62,6 @@ export default function AdminAllQuotationsPage() {
     load();
   }, [load]);
 
-  const downloadPdf = (id: string, quoteNumber: string) => {
-    downloadQuotationPdf(id, quoteNumber, (msg) => alert(msg));
-  };
-
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       <div className="flex flex-col md:flex-row md:items-center gap-4 mb-6">
