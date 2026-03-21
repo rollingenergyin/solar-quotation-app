@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { downloadQuotationPdf } from '@/lib/pdf-download';
 import RollingEnergyLogo from '@/components/quotation/RollingEnergyLogo';
 
 interface Quotation {
@@ -73,7 +72,7 @@ export default function AdminAllQuotationsPage() {
         <RollingEnergyLogo variant="light" size="md" />
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-0.5">All Quotations</h1>
-          <p className="text-sm text-gray-500">View and download quotations from all sales users</p>
+          <p className="text-sm text-gray-500">View quotations from all sales users</p>
         </div>
       </div>
 
@@ -134,9 +133,6 @@ export default function AdminAllQuotationsPage() {
                     <Link href={`/quotation/${q.id}/print`} target="_blank" className="text-sm font-medium text-gray-600 py-2 px-3 rounded-lg bg-gray-100 min-h-[44px] flex items-center">
                       View
                     </Link>
-                    <button type="button" onClick={() => downloadPdf(q.id, q.quoteNumber)} className="text-sm font-medium text-blue-600 py-2 px-3 rounded-lg bg-blue-50 min-h-[44px]">
-                      Download
-                    </button>
                   </div>
                 </div>
               ))}
@@ -169,7 +165,6 @@ export default function AdminAllQuotationsPage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           <Link href={`/quotation/${q.id}/print`} target="_blank" className="text-xs font-medium text-gray-600 hover:text-gray-900">View</Link>
-                          <button type="button" onClick={() => downloadPdf(q.id, q.quoteNumber)} className="text-xs font-medium text-blue-600 hover:text-blue-700">Download</button>
                         </div>
                       </td>
                     </tr>

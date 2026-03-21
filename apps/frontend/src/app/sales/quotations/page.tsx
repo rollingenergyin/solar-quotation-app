@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { downloadQuotationPdf } from '@/lib/pdf-download';
 
 interface SavedQuotation {
   id: string;
@@ -41,10 +40,6 @@ export default function SavedQuotationsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const downloadPdf = (id: string, quoteNumber: string) => {
-    downloadQuotationPdf(id, quoteNumber, (msg) => alert(msg));
-  };
-
   const deleteQuotation = async (id: string, quoteNumber: string) => {
     if (!confirm(`Delete quotation ${quoteNumber}? This cannot be undone.`)) return;
     setDeleting(id);
@@ -70,7 +65,7 @@ export default function SavedQuotationsPage() {
         <Link href="/sales" className="text-sm text-gray-400 hover:text-gray-600">← Sales Dashboard</Link>
         <h1 className="text-xl md:text-2xl font-bold text-gray-900">My Quotations</h1>
         <p className="text-sm text-gray-500">
-          View, download, or edit your quotations
+          View or edit your quotations
         </p>
       </div>
 
@@ -106,9 +101,6 @@ export default function SavedQuotationsPage() {
                     <Link href={`/quotation/${q.id}/print`} target="_blank" className="text-sm font-medium text-gray-600 hover:text-gray-900 py-2 px-3 rounded-lg bg-gray-100">
                       View
                     </Link>
-                    <button type="button" onClick={() => downloadPdf(q.id, q.quoteNumber)} className="text-sm font-medium text-blue-600 hover:text-blue-700 py-2 px-3 rounded-lg bg-blue-50">
-                      Download
-                    </button>
                     <Link href={`/sales/quotations/${q.id}/edit`} className="text-sm font-medium text-blue-600 hover:text-blue-700 py-2 px-3 rounded-lg bg-blue-50">
                       Edit
                     </Link>
@@ -160,7 +152,6 @@ export default function SavedQuotationsPage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Link href={`/quotation/${q.id}/print`} target="_blank" className="text-xs font-medium text-gray-600 hover:text-gray-900">View</Link>
-                          <button type="button" onClick={() => downloadPdf(q.id, q.quoteNumber)} className="text-xs font-medium text-blue-600 hover:text-blue-700">Download</button>
                           <Link href={`/sales/quotations/${q.id}/edit`} className="text-xs font-medium text-blue-600 hover:text-blue-700">Edit</Link>
                           <button type="button" onClick={() => deleteQuotation(q.id, q.quoteNumber)} disabled={deleting === q.id} className="text-xs font-medium text-red-500 hover:text-red-700 disabled:opacity-50">
                             {deleting === q.id ? '…' : 'Delete'}
