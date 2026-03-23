@@ -47,7 +47,7 @@ router.post(
     body('userId').optional().trim(),
     body('phone').optional().trim(),
     body('designation').optional().trim(),
-    body('role').optional().isIn(['ADMIN', 'SALES']).withMessage('Invalid role'),
+    body('role').optional().isIn(['ADMIN', 'SALES', 'FINANCE']).withMessage('Invalid role'),
   ],
   authenticate,
   requireRoles(Role.ADMIN),

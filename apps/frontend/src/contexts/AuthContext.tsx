@@ -15,7 +15,7 @@ interface AuthContextValue {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (emailOrUserId: string, password: string, rememberMe?: boolean) => Promise<void>;
+  login: (emailOrUserId: string, password: string, rememberMe?: boolean) => Promise<User>;
   logout: () => void;
 }
 
@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const login = useCallback(async (emailOrUserId: string, password: string, rememberMe?: boolean) => {
+  const login = useCallback(async (emailOrUserId: string, password: string, rememberMe?: boolean): Promise<User> => {
     const { token: t, user: u } = await api<{ token: string; user: User }>(
       '/auth/login',
       {
@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(USER_KEY, JSON.stringify(u));
     setToken(t);
     setUser(u);
+    return u;
   }, []);
 
   const logout = useCallback(() => {

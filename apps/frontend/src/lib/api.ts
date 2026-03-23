@@ -14,7 +14,14 @@ export async function api<T>(
 ): Promise<T> {
   const token =
     typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  return fetchApi<T>(path, options, token);
+}
 
+async function fetchApi<T>(
+  path: string,
+  options: RequestInit,
+  token: string | null
+): Promise<T> {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...options.headers,

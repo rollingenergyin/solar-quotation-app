@@ -37,6 +37,9 @@ export default function HomePage() {
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-500">{user.name} · <span className="text-yellow-600 font-medium">{user.role}</span></span>
           <Link href="/sales" className="text-sm bg-yellow-500 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-600 transition-colors">Sales Dashboard</Link>
+          {(user.role === 'ADMIN' || user.role === 'FINANCE') && (
+            <Link href="/finance/dashboard" className="text-sm bg-emerald-500 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-600 transition-colors">Finance Panel</Link>
+          )}
           {user.role === 'ADMIN' && (
             <Link href="/admin" className="text-sm bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-700 transition-colors">Admin Panel</Link>
           )}
