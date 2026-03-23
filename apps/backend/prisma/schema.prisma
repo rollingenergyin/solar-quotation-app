@@ -12,6 +12,7 @@ datasource db {
 enum Role {
   ADMIN
   SALES
+  FINANCE
 }
 
 enum UserStatus {
@@ -471,4 +472,342 @@ model QuotationResult {
   quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
 
   @@map("quotation_results")
+}
+
+// ─── Finance Panel (ERP Module) ───────────────────────────────────────────────
+
+enum FinanceTransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum ExpenseCategory {
+  SITE_EXPENSE
+  COMMERCIAL_EXPENSE
+  SURYAGHAR_LOANS
+  OVERHEADS
+  MARKETING
+  ALLOWANCES
+  SALARIES
+  FOOD_ACCOMMODATION
+  MISC
+}
+
+enum PaymentMode {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  CARD
+  OTHER
+}
+
+model Vendor {
+  id        String   @id @default(cuid())
+  name      String
+  gstin     String?
+  contact   String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchaseBills PurchaseBill[]
+  expenses      Expense[]
+
+  @@map("finance_vendors")
+}
+
+model FinanceClient {
+  id          String   @id @default(cuid())
+  name        String
+  gstin       String?
+  contact     String?
+  address     String?
+  customerId  String?  // link to existing Customer
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sites       FinanceSite[]
+  salesBills   SalesBill[]
+  invoices     Invoice[]
+
+  @@map("finance_clients")
+}
+
+model FinanceSite {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  clientId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client            FinanceClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  projects          FinanceProject[]
+  bankTransactions  BankTransaction[]
+  transactionSplits  TransactionSplit[]
+  transactionRules   TransactionRule[]
+
+  @@map("finance_sites")
+}
+
+model FinanceProject {
+  id             String   @id @default(cuid())
+  name           String
+  code           String?  @unique
+  financeSiteId  String?
+  quotationId    String?
+  status         String?  @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  financeSite    FinanceSite? @relation(fields: [financeSiteId], references: [id], onDelete: SetNull)
+  expenses       Expense[]
+  incomes        Income[]
+  purchaseBills   PurchaseBill[]
+  salesBills     SalesBill[]
+  stockMovements  StockMovement[]
+
+  @@map("finance_projects")
+}
+
+model BankStatementUpload {
+  id        String   @id @default(cuid())
+  fileName  String
+  rawData   Json     // original parsed rows
+  createdAt DateTime @default(now())
+
+  transactions BankTransaction[]
+
+  @@map("finance_bank_statement_uploads")
+}
+
+model TransactionCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  bankTransactions BankTransaction[]
+  splits           TransactionSplit[]
+
+  @@map("finance_transaction_categories")
+}
+
+model BankTransaction {
+  id                String   @id @default(cuid())
+  uploadId          String
+  transactionDate   DateTime
+  valueDate         DateTime?
+  referenceNo       String?
+  rawDescription    String?  // original from file
+  description       String?  // cleaned/parsed description
+  partyName         String?
+  amount            Float    // always positive; type indicates debit/credit
+  type              FinanceTransactionType  // EXPENSE=debit, INCOME=credit
+  categoryId        String?  // TransactionCategory (user-manageable)
+  siteId            String?  // FinanceSite (all modules link to Site)
+  isSplit           Boolean  @default(false)
+  isReviewed        Boolean  @default(false)
+  duplicateOfId     String?  // if duplicate, points to canonical transaction
+  processed         Boolean  @default(false)
+  manualOverride    Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  upload       BankStatementUpload  @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  category     TransactionCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  site         FinanceSite?         @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  duplicateOf  BankTransaction?     @relation("DuplicateOf", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates   BankTransaction[]    @relation("DuplicateOf")
+  splits       TransactionSplit[]
+
+  @@map("finance_bank_transactions")
+}
+
+model TransactionSplit {
+  id            String   @id @default(cuid())
+  transactionId String
+  categoryId    String
+  siteId        String?
+  amount        Float
+  description   String?
+  createdAt     DateTime @default(now())
+
+  transaction BankTransaction       @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  category    TransactionCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  site        FinanceSite?          @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  @@map("finance_transaction_splits")
+}
+
+model TransactionRule {
+  id          String   @id @default(cuid())
+  name        String?
+  priority    Int      @default(0)  // higher = applied first
+  conditions  Json     // { partyName?: string, partyNameContains?: string, descriptionContains?: string, ... }
+  category    ExpenseCategory?
+  siteId      String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  site FinanceSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  @@map("finance_transaction_rules")
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  amount      Float
+  category    ExpenseCategory
+  siteId      String?
+  vendorId    String?
+  paymentMode PaymentMode?
+  description String?
+  billUrl     String?
+  multiSite   Boolean         @default(false)
+  projectId   String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  vendor   Vendor?          @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  project  FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@map("finance_expenses")
+}
+
+model Income {
+  id          String   @id @default(cuid())
+  amount      Float
+  category    String?
+  siteId      String?
+  clientId    String?
+  paymentMode PaymentMode?
+  description String?
+  projectId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@map("finance_incomes")
+}
+
+model PurchaseBill {
+  id           String   @id @default(cuid())
+  vendorId     String
+  projectId    String?
+  gstNumber    String?
+  invoiceNo    String
+  baseAmount   Float
+  gstAmount    Float
+  totalAmount  Float
+  fileUrl      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  vendor   Vendor          @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  project  FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@map("finance_purchase_bills")
+}
+
+model SalesBill {
+  id           String   @id @default(cuid())
+  clientId     String
+  projectId    String?
+  gstNumber    String?
+  invoiceNo    String
+  baseAmount   Float
+  gstAmount    Float
+  totalAmount  Float
+  fileUrl      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  client   FinanceClient   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  project  FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@map("finance_sales_bills")
+}
+
+enum InvoiceType {
+  SPGS
+  PRODUCT
+  SERVICE
+  PROFORMA
+}
+
+model Invoice {
+  id           String      @id @default(cuid())
+  type         InvoiceType
+  clientId     String
+  quotationId   String?
+  items        Json        // line items
+  totalAmount  Float
+  fileUrl      String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  client FinanceClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@map("finance_invoices")
+}
+
+enum ProductType {
+  SPGS
+  EXTERNAL
+}
+
+model FinanceProduct {
+  id       String      @id @default(cuid())
+  name     String
+  hsn      String?
+  type     ProductType @default(SPGS)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime  @updatedAt
+
+  stockMovements StockMovement[]
+
+  @@map("finance_products")
+}
+
+model StockMovement {
+  id         String   @id @default(cuid())
+  productId  String
+  projectId  String?
+  siteId     String?
+  quantity   Float    // + for purchase, - for usage
+  unitPrice  Float?
+  type       String   // PURCHASE | USAGE
+  createdAt  DateTime @default(now())
+
+  product  FinanceProduct  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  project  FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@map("finance_stock_movements")
+}
+
+model CashVoucher {
+  id           String   @id @default(cuid())
+  amount       Float
+  description  String?
+  category     String?
+  paymentSource String?
+  billUrl      String?
+  createdAt    DateTime @default(now())
+
+  @@map("finance_cash_vouchers")
+}
+
+model CashflowSnapshot {
+  id              String   @id @default(cuid())
+  date            DateTime
+  openingBalance  Float
+  inflows         Float
+  outflows        Float
+  closingBalance  Float
+  createdAt       DateTime @default(now())
+
+  @@map("finance_cashflow_snapshots")
 }

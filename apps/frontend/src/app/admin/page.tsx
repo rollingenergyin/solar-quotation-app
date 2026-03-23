@@ -54,9 +54,9 @@ export default function AdminDashboard() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 max-w-2xl">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Recent Activity</h2>
-        {stats?.recent.length === 0 && <p className="text-sm text-gray-400">No activity yet.</p>}
+        {(!stats?.recent || stats.recent.length === 0) && <p className="text-sm text-gray-400">No activity yet.</p>}
         <ul className="divide-y divide-gray-50">
-          {stats?.recent.map((log) => (
+          {(stats?.recent ?? []).map((log) => (
             <li key={log.id} className="py-3 flex justify-between">
               <div>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded ${

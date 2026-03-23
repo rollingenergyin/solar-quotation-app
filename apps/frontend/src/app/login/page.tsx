@@ -25,8 +25,12 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(emailOrUserId, password, rememberMe);
-      router.replace('/');
+      const user = await login(emailOrUserId, password, rememberMe);
+      if (user?.role === 'FINANCE') {
+        router.replace('/finance/dashboard');
+      } else {
+        router.replace('/');
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Login failed';
       const isNetworkError =

@@ -12,7 +12,8 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "create-admin": "tsx scripts/createAdmin.ts"
+    "create-admin": "tsx scripts/createAdmin.ts",
+    "create-finance-user": "tsx scripts/createFinanceUser.ts"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -29,11 +30,12 @@
     "express-validator": "^7.2.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
-    "puppeteer": "^23.6.0",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.4",
     "pdfjs-dist": "^5.5.207",
-    "tesseract.js": "^5.1.1"
+    "puppeteer": "^23.6.0",
+    "tesseract.js": "^5.1.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

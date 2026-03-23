@@ -230,6 +230,18 @@ body {
   }
 }
 
+/* ─── Finance Panel: PC-oriented layout ────────────────────────────────────── */
+@layer components {
+  .finance-main {
+    min-width: 0;
+  }
+  @media (min-width: 1280px) {
+    .finance-main {
+      min-width: 720px;
+    }
+  }
+}
+
 /* ─── Shared input utility ─────────────────────────────────────────────────── */
 @layer components {
   .input {
