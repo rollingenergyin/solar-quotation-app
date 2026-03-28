@@ -55,12 +55,17 @@ async function fetchApi<T>(
   }
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({})) as { error?: string; errors?: Array<{ msg?: string }> };
-    const msg =
+    const data = await res.json().catch(() => ({})) as {
+      error?: string;
+      details?: string;
+      errors?: Array<{ msg?: string }>;
+    };
+    const primary =
       data.error ||
       (Array.isArray(data.errors) && data.errors[0] && (data.errors[0].msg ?? String(data.errors[0]))) ||
       res.statusText;
-    throw new Error(msg);
+    const msg = [primary, data.details].filter((x) => typeof x === 'string' && x.trim().length > 0).join(' — ');
+    throw new Error(msg || res.statusText);
   }
 
   const text = await res.text();

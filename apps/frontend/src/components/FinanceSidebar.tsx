@@ -17,6 +17,7 @@ const navItems = [
   { href: '/admin/finance/bank-upload', label: 'Bank Upload', icon: '🏦' },
   { href: '/admin/finance/bank-transactions', label: 'Bank Txns', icon: '💳' },
   { href: '/admin/finance/invoices', label: 'Invoices', icon: '🧾' },
+  { href: '/admin/finance/invoice-templates', label: 'Invoice layout', icon: '📐' },
   { href: '/admin/finance/products', label: 'Products', icon: '📦' },
   { href: '/admin/finance/projects', label: 'Projects', icon: '📁' },
   { href: '/admin/finance/cash-vouchers', label: 'Cash Vouchers', icon: '💵' },
@@ -117,6 +118,7 @@ export default function FinanceSidebar() {
           fixed lg:relative inset-y-0 left-0 z-50 flex-shrink-0
           min-h-screen bg-gray-900 text-white flex flex-col transition-transform duration-200
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          ${mobileOpen ? 'pointer-events-auto' : 'pointer-events-none lg:pointer-events-auto'}
           ${collapsed ? 'w-14' : 'w-56'}
         `}
       >

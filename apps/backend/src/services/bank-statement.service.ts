@@ -1,4 +1,4 @@
-import { PrismaClient, type Prisma } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import type { FinanceTransactionType, ExpenseCategory } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import {
@@ -7,6 +7,7 @@ import {
   extractPartyAndDescription,
   type ProcessedTransaction,
 } from './transaction-processor.service.js';
+import { deleteBankTransactionBill } from './bank-transaction-bill.service.js';
 
 const prisma = new PrismaClient();
 
@@ -276,6 +277,7 @@ export async function uploadAndProcess(
 
   const classified = classifyRows(rawRows, rules);
   let duplicatesSkipped = 0;
+  let sortOrder = 0;
 
   for (const t of classified) {
     const dupId = await findDuplicate(
@@ -290,7 +292,7 @@ export async function uploadAndProcess(
     }
     const categoryId = t.category ? await resolveCategoryId(t.category) : null;
 
-    await prisma.bankTransaction.create({
+    const row = await prisma.bankTransaction.create({
       data: {
         uploadId: uploadRecord.id,
         transactionDate: t.transactionDate,
@@ -305,9 +307,17 @@ export async function uploadAndProcess(
         siteId: null,
       },
     });
+    // sort_order is not passed through Prisma create so uploads work even if the generated
+    // client is stale (unknown `sortOrder`). Column must exist in DB (migration).
+    await prisma.$executeRaw(
+      Prisma.sql`UPDATE "finance_bank_transactions" SET "sort_order" = ${sortOrder} WHERE "id" = ${row.id}`
+    );
+    sortOrder += 1;
   }
 
-  const count = await prisma.bankTransaction.count({ where: { uploadId: uploadRecord.id } });
+  const count = await prisma.bankTransaction.count({
+    where: { uploadId: uploadRecord.id, deletedAt: null },
+  });
   return {
     uploadId: uploadRecord.id,
     transactionsCreated: count,
@@ -316,15 +326,27 @@ export async function uploadAndProcess(
   };
 }
 
+async function resolveCategoryIdsFromNamesOrIds(list: string[]): Promise<string[]> {
+  const catIds: string[] = [];
+  for (const c of list) {
+    const found = await prisma.transactionCategory.findFirst({
+      where: { OR: [{ id: c.trim() }, { name: c.trim() }] },
+      select: { id: true },
+    });
+    if (found) catIds.push(found.id);
+  }
+  return catIds;
+}
+
 /**
  * Get transactions (optionally filtered)
  */
 export async function getTransactions(options: {
   uploadId?: string;
   type?: FinanceTransactionType;
-  category?: string | null;  // categoryId or category name; null = uncategorized only
-  categories?: string[];    // include only these (category ids or names, comma-separated)
-  excludeCategories?: string[];  // hide these categories
+  category?: string | null; // categoryId or category name; null = uncategorized only
+  categories?: string[]; // include only these (category ids or names, comma-separated)
+  excludeCategories?: string[]; // hide these categories
   siteId?: string;
   uncategorizedOnly?: boolean;
   from?: Date;
@@ -332,51 +354,129 @@ export async function getTransactions(options: {
   limit?: number;
   offset?: number;
   sortDate?: 'asc' | 'desc';
+  /** When true, list only soft-deleted (recycle bin) rows */
+  trash?: boolean;
 }) {
-  const { uploadId, type, category, categories, excludeCategories, siteId, uncategorizedOnly, from, to, limit = 100, offset = 0, sortDate = 'desc' } = options;
-  const where: Parameters<typeof prisma.bankTransaction.findMany>[0]['where'] = { duplicateOfId: null };
+  const {
+    uploadId,
+    type,
+    category,
+    categories,
+    excludeCategories,
+    siteId,
+    uncategorizedOnly,
+    from,
+    to,
+    limit = 100,
+    offset = 0,
+    sortDate = 'desc',
+    trash = false,
+  } = options;
 
-  if (uploadId) where.uploadId = uploadId;
-  if (type) where.type = type;
+  const andParts: Prisma.BankTransactionWhereInput[] = [
+    { duplicateOfId: null },
+    trash ? { deletedAt: { not: null } } : { deletedAt: null },
+  ];
+
+  if (uploadId) andParts.push({ uploadId });
+  if (type) andParts.push({ type });
+
   if (uncategorizedOnly || category === null) {
-    where.categoryId = null;
+    andParts.push({ isSplit: false, categoryId: null });
   } else if (categories && categories.length > 0) {
-    const catIds: string[] = [];
-    for (const c of categories) {
-      const found = await prisma.transactionCategory.findFirst({ where: { OR: [{ id: c.trim() }, { name: c.trim() }] }, select: { id: true } });
-      if (found) catIds.push(found.id);
+    const catIds = await resolveCategoryIdsFromNamesOrIds(categories);
+    if (catIds.length === 0) {
+      andParts.push({ id: { in: [] } });
+    } else {
+      andParts.push({
+        OR: [
+          { isSplit: false, categoryId: { in: catIds } },
+          { isSplit: true, splits: { some: { categoryId: { in: catIds } } } },
+        ],
+      });
     }
-    where.categoryId = catIds.length > 0 ? { in: catIds } : 'none';
   } else if (excludeCategories && excludeCategories.length > 0) {
-    const catIds: string[] = [];
-    for (const c of excludeCategories) {
-      const found = await prisma.transactionCategory.findFirst({ where: { OR: [{ id: c.trim() }, { name: c.trim() }] }, select: { id: true } });
-      if (found) catIds.push(found.id);
-    }
+    const catIds = await resolveCategoryIdsFromNamesOrIds(excludeCategories);
     if (catIds.length > 0) {
-      where.OR = [{ categoryId: null }, { categoryId: { notIn: catIds } }];
+      andParts.push({
+        OR: [
+          { isSplit: false, OR: [{ categoryId: null }, { categoryId: { notIn: catIds } }] },
+          { isSplit: true, splits: { some: { categoryId: { notIn: catIds } } } },
+        ],
+      });
     }
   } else if (category) {
-    const c = await prisma.transactionCategory.findFirst({ where: { OR: [{ id: category }, { name: category }] }, select: { id: true } });
-    where.categoryId = c?.id ?? 'none';
-  }
-  if (siteId) where.siteId = siteId;
-  if (from || to) {
-    where.transactionDate = {};
-    if (from) (where.transactionDate as { gte?: Date }).gte = from;
-    if (to) (where.transactionDate as { lte?: Date }).lte = to;
+    const c = await prisma.transactionCategory.findFirst({
+      where: { OR: [{ id: category }, { name: category }] },
+      select: { id: true },
+    });
+    if (!c) {
+      andParts.push({ id: { in: [] } });
+    } else {
+      andParts.push({
+        OR: [
+          { isSplit: false, categoryId: c.id },
+          { isSplit: true, splits: { some: { categoryId: c.id } } },
+        ],
+      });
+    }
   }
 
-  const [transactions, total] = await Promise.all([
+  if (siteId) {
+    andParts.push({
+      OR: [{ isSplit: false, siteId }, { isSplit: true, splits: { some: { siteId } } }],
+    });
+  }
+
+  if (from || to) {
+    const td: { gte?: Date; lte?: Date } = {};
+    if (from) td.gte = from;
+    if (to) td.lte = to;
+    andParts.push({ transactionDate: td });
+  }
+
+  const where: Prisma.BankTransactionWhereInput =
+    andParts.length === 1 ? andParts[0]! : { AND: andParts };
+
+  const [idMatches, total] = await Promise.all([
     prisma.bankTransaction.findMany({
       where,
-      include: { upload: true, site: true, category: true },
-      orderBy: { transactionDate: sortDate },
-      take: limit,
-      skip: offset,
+      select: { id: true },
     }),
     prisma.bankTransaction.count({ where }),
   ]);
+
+  if (idMatches.length === 0) {
+    return { transactions: [], total };
+  }
+
+  const idList = idMatches.map((r) => r.id);
+  const dateDir = sortDate === 'asc' ? 'ASC' : 'DESC';
+  const orderedIds = await prisma.$queryRaw<{ id: string }[]>(
+    Prisma.sql`
+      SELECT id FROM "finance_bank_transactions"
+      WHERE id IN (${Prisma.join(idList.map((id) => Prisma.sql`${id}`))})
+      ORDER BY "sort_order" ASC, "transactionDate" ${Prisma.raw(dateDir)}
+    `
+  );
+  const pageIds = orderedIds.slice(offset, offset + limit);
+
+  const rows = await prisma.bankTransaction.findMany({
+    where: { id: { in: pageIds.map((p) => p.id) } },
+    include: {
+      upload: true,
+      site: true,
+      category: true,
+      purchaseBill: true,
+      salesBill: true,
+      splits: {
+        include: { category: true, site: true, purchaseBill: true, salesBill: true },
+        orderBy: { id: 'asc' },
+      },
+    },
+  });
+  const orderIndex = new Map(pageIds.map((p, i) => [p.id, i]));
+  const transactions = [...rows].sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0));
 
   return { transactions, total };
 }
@@ -398,14 +498,32 @@ export async function updateClassification(
     manualOverride?: boolean;
   }
 ) {
+  const existing = await prisma.bankTransaction.findFirst({
+    where: { id: transactionId, deletedAt: null },
+    select: { isSplit: true },
+  });
+  if (!existing) throw new Error('Transaction not found or is in the recycle bin');
   const updateData: Record<string, unknown> = { ...data, manualOverride: data.manualOverride ?? true };
   if (data.category !== undefined) updateData.categoryId = data.category;
   if (data.categoryId !== undefined) updateData.categoryId = data.categoryId;
   delete updateData.category;
+  if (existing.isSplit) {
+    delete updateData.categoryId;
+    delete updateData.siteId;
+  }
   return prisma.bankTransaction.update({
     where: { id: transactionId },
     data: updateData as Parameters<typeof prisma.bankTransaction.update>[0]['data'],
-    include: { site: true, category: true },
+    include: {
+      site: true,
+      category: true,
+      purchaseBill: true,
+      salesBill: true,
+      splits: {
+        include: { category: true, site: true, purchaseBill: true, salesBill: true },
+        orderBy: { id: 'asc' },
+      },
+    },
   });
 }
 
@@ -422,10 +540,135 @@ export async function bulkUpdate(
   if (data.siteId !== undefined) updateData.siteId = data.siteId;
   if (data.isReviewed !== undefined) updateData.isReviewed = data.isReviewed;
   const result = await prisma.bankTransaction.updateMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, isSplit: false, deletedAt: null },
     data: updateData as Parameters<typeof prisma.bankTransaction.updateMany>[0]['data'],
   });
   return { updated: result.count };
+}
+
+/**
+ * Persist manual row order within a bank statement upload (drag-drop).
+ */
+const AMOUNT_EPS = 0.02;
+
+export async function updateTransactionSplit(
+  transactionId: string,
+  splitId: string,
+  data: { amount?: number; description?: string | null; categoryId?: string; siteId?: string | null }
+) {
+  const txn = await prisma.bankTransaction.findFirst({
+    where: { id: transactionId, deletedAt: null },
+    select: { id: true, amount: true, isSplit: true },
+  });
+  if (!txn || !txn.isSplit) throw new Error('Transaction is not split or is in the recycle bin');
+  const splits = await prisma.transactionSplit.findMany({ where: { transactionId } });
+  const others = splits.filter((s) => s.id !== splitId);
+  const target = splits.find((s) => s.id === splitId);
+  if (!target) throw new Error('Split not found');
+
+  const nextAmount = data.amount !== undefined ? Number(data.amount) : target.amount;
+  const total = others.reduce((s, sp) => s + sp.amount, 0) + nextAmount;
+  if (Math.abs(total - txn.amount) > AMOUNT_EPS) {
+    throw new Error('Split amounts must sum to transaction amount');
+  }
+
+  return prisma.transactionSplit.update({
+    where: { id: splitId },
+    data: {
+      ...(data.amount !== undefined ? { amount: nextAmount } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {}),
+      ...(data.siteId !== undefined ? { siteId: data.siteId } : {}),
+    },
+    include: { site: true, category: true },
+  });
+}
+
+export async function deleteTransactionSplit(transactionId: string, splitId: string) {
+  const txn = await prisma.bankTransaction.findFirst({
+    where: { id: transactionId, deletedAt: null },
+    select: { id: true, amount: true, isSplit: true },
+  });
+  if (!txn || !txn.isSplit) throw new Error('Transaction is not split or is in the recycle bin');
+  const all = await prisma.transactionSplit.findMany({ where: { transactionId } });
+  const others = all.filter((s) => s.id !== splitId);
+  if (others.length < 1) {
+    throw new Error('Use Clear splits on the transaction to remove splitting entirely');
+  }
+  const sumOthers = others.reduce((s, sp) => s + sp.amount, 0);
+  if (Math.abs(sumOthers - txn.amount) > AMOUNT_EPS) {
+    throw new Error('Adjust amounts so remaining splits sum to the transaction total before removing this row');
+  }
+  try {
+    await deleteBankTransactionBill(transactionId, splitId);
+  } catch (e) {
+    console.warn('FINANCE: deleteBankTransactionBill before split delete skipped:', e);
+  }
+  await prisma.transactionSplit.delete({ where: { id: splitId } });
+}
+
+export async function reorderTransactions(uploadId: string, orderedIds: string[]): Promise<void> {
+  if (orderedIds.length === 0) return;
+  const rows = await prisma.bankTransaction.findMany({
+    where: { uploadId, id: { in: orderedIds }, deletedAt: null },
+    select: { id: true },
+  });
+  if (rows.length !== orderedIds.length) {
+    throw new Error('Invalid transaction ids for this upload');
+  }
+  await prisma.$transaction(
+    orderedIds.map((id, index) =>
+      prisma.$executeRaw(
+        Prisma.sql`UPDATE "finance_bank_transactions" SET "sort_order" = ${index} WHERE "id" = ${id} AND "uploadId" = ${uploadId} AND "deleted_at" IS NULL`
+      )
+    )
+  );
+}
+
+export async function bulkSoftDelete(uploadId: string, ids: string[]): Promise<{ updated: number }> {
+  if (ids.length === 0) return { updated: 0 };
+  const r = await prisma.bankTransaction.updateMany({
+    where: { uploadId, id: { in: ids }, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  return { updated: r.count };
+}
+
+export async function bulkRestore(uploadId: string, ids: string[]): Promise<{ updated: number }> {
+  if (ids.length === 0) return { updated: 0 };
+  const r = await prisma.bankTransaction.updateMany({
+    where: { uploadId, id: { in: ids }, deletedAt: { not: null } },
+    data: { deletedAt: null },
+  });
+  return { updated: r.count };
+}
+
+export async function bulkHardDelete(uploadId: string, ids: string[]): Promise<{ deleted: number }> {
+  const rows = await prisma.bankTransaction.findMany({
+    where: { uploadId, id: { in: ids }, deletedAt: { not: null } },
+    select: { id: true },
+  });
+  const foundIds = rows.map((r) => r.id);
+  for (const id of foundIds) {
+    const splits = await prisma.transactionSplit.findMany({
+      where: { transactionId: id },
+      select: { id: true },
+    });
+    for (const s of splits) {
+      try {
+        await deleteBankTransactionBill(id, s.id);
+      } catch (e) {
+        console.warn('bulkHardDelete: split bill cleanup', e);
+      }
+    }
+    try {
+      await deleteBankTransactionBill(id, undefined);
+    } catch (e) {
+      console.warn('bulkHardDelete: txn bill cleanup', e);
+    }
+    await prisma.bankTransaction.delete({ where: { id } });
+  }
+  return { deleted: foundIds.length };
 }
 
 export const bankStatementService = {
@@ -436,4 +679,10 @@ export const bankStatementService = {
   getTransactions,
   updateClassification,
   bulkUpdate,
+  reorderTransactions,
+  updateTransactionSplit,
+  deleteTransactionSplit,
+  bulkSoftDelete,
+  bulkRestore,
+  bulkHardDelete,
 };

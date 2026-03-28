@@ -7,7 +7,7 @@
  * - Duplicate detection
  */
 
-import { PrismaClient, type ExpenseCategory } from '@prisma/client';
+import { PrismaClient, type ExpenseCategory, type Prisma } from '@prisma/client';
 import type { ParsedRow } from './bank-statement.service.js';
 
 const prisma = new PrismaClient();
@@ -158,11 +158,12 @@ export async function findDuplicate(
   amount: number,
   referenceNo: string | null
 ): Promise<string | null> {
-  const where: Parameters<typeof prisma.bankTransaction.findFirst>[0]['where'] = {
+  const where: Prisma.BankTransactionWhereInput = {
     uploadId,
     transactionDate,
     amount,
     duplicateOfId: null,
+    deletedAt: null,
   };
 
   if (referenceNo?.trim()) {

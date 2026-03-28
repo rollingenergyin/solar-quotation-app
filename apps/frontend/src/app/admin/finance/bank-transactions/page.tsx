@@ -1,22 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import BankTransactionsTable, { type BankTx } from './BankTransactionsTable';
 
-interface BankTransaction {
-  id: string;
-  transactionDate: string;
-  amount: number;
-  type: string;
-  category?: { id: string; name: string } | null;
-  description: string | null;
-  partyName: string | null;
-  referenceNo: string | null;
-  manualOverride: boolean;
-  site?: { id: string; name: string } | null;
-}
+type BankTransaction = BankTx;
 
 interface TransactionCategory {
   id: string;
@@ -43,7 +33,6 @@ interface Summary {
 }
 
 const fmt = (n: number) => '₹' + n.toLocaleString('en-IN');
-const fmtDate = (s: string) => new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
 export default function BankTransactionsPage() {
   const searchParams = useSearchParams();
@@ -65,11 +54,11 @@ export default function BankTransactionsPage() {
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set());
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [viewTrash, setViewTrash] = useState(false);
+  const [trashCount, setTrashCount] = useState(0);
   const [bulkCategory, setBulkCategory] = useState('');
   const [bulkSiteId, setBulkSiteId] = useState('');
   const [bulkError, setBulkError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<Partial<BankTransaction>>({});
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [showEditCategories, setShowEditCategories] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
@@ -85,6 +74,14 @@ export default function BankTransactionsPage() {
   const [siteErrorInModal, setSiteErrorInModal] = useState('');
   const [modalProjects, setModalProjects] = useState<FinanceSite[]>([]);
 
+  const refreshTrashCount = useCallback(() => {
+    if (!selectedUploadId) return;
+    const p = new URLSearchParams({ uploadId: selectedUploadId, trash: 'true', limit: '1' });
+    api<{ total: number }>(`/finance/bank-transactions?${p}`)
+      .then((r) => setTrashCount(r.total))
+      .catch(() => setTrashCount(0));
+  }, [selectedUploadId]);
+
   const fetchTransactions = () => {
     if (!selectedUploadId) return;
     setLoading(true);
@@ -93,6 +90,7 @@ export default function BankTransactionsPage() {
       limit: '500',
       sortDate,
     });
+    if (viewTrash) params.set('trash', 'true');
     if (typeFilter !== 'ALL') params.set('type', typeFilter);
     if (uncategorizedOnly) params.set('uncategorized', 'true');
     else if (categoryFilterMode === 'include' && selectedCategoryIds.size > 0) {
@@ -168,7 +166,11 @@ export default function BankTransactionsPage() {
   useEffect(() => {
     if (!selectedUploadId) return;
     fetchTransactions();
-  }, [selectedUploadId, sortDate, typeFilter, uncategorizedOnly, filterCategory, categoryFilterMode, selectedCategoryIds]);
+  }, [selectedUploadId, sortDate, typeFilter, uncategorizedOnly, filterCategory, categoryFilterMode, selectedCategoryIds, viewTrash]);
+
+  useEffect(() => {
+    refreshTrashCount();
+  }, [refreshTrashCount]);
 
   useEffect(() => {
     if (!showCategoryFilter) return;
@@ -177,13 +179,17 @@ export default function BankTransactionsPage() {
     return () => document.removeEventListener('click', close);
   }, [showCategoryFilter]);
 
-  useEffect(() => {
+  const refreshSummary = useCallback(() => {
     if (!selectedUploadId) return;
     const params = new URLSearchParams({ uploadId: selectedUploadId });
     api<Summary>(`/finance/bank-transactions/summary?${params}`)
       .then(setSummary)
       .catch(() => setSummary(null));
-  }, [selectedUploadId, transactions]);
+  }, [selectedUploadId]);
+
+  useEffect(() => {
+    refreshSummary();
+  }, [selectedUploadId, transactions, refreshSummary]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -223,69 +229,65 @@ export default function BankTransactionsPage() {
     }
   };
 
-  const handleEdit = (t: BankTransaction) => {
-    setEditingId(t.id);
-    setEditForm({
-      type: t.type,
-      category: t.category ?? undefined,
-      partyName: t.partyName,
-      description: t.description,
-      referenceNo: t.referenceNo,
-    });
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingId) return;
+  /** Main list: move selected rows to recycle bin (soft delete). */
+  const handleBulkDeleteToRecycleBin = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || !selectedUploadId) return;
+    setBulkError(null);
+    if (
+      !window.confirm(
+        `Move ${ids.length} transaction(s) to the recycle bin? They will be removed from totals, categories, and projects until you restore or permanently delete them.`
+      )
+    )
+      return;
     try {
-      const payload: Record<string, unknown> = {
-        type: editForm.type,
-        partyName: editForm.partyName,
-        description: editForm.description,
-        referenceNo: editForm.referenceNo,
-        manualOverride: true,
-      };
-      if (editForm.category !== undefined) payload.categoryId = editForm.category?.id ?? null;
-      await api(`/finance/bank-transactions/${editingId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(payload),
+      await api('/finance/bank-transactions/bulk-soft-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids, uploadId: selectedUploadId }),
       });
-      setTransactions((prev) =>
-        prev.map((t) => (t.id === editingId ? { ...t, ...editForm } : t))
-      );
-      setEditingId(null);
-      setEditForm({});
-    } catch {
-      // ignore
+      setSelectedIds(new Set());
+      fetchTransactions();
+      refreshTrashCount();
+      refreshSummary();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Failed to move to recycle bin');
     }
   };
 
-  const handleCategoryChange = async (t: BankTransaction, categoryId: string | null) => {
+  const handleBulkRestore = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || !selectedUploadId) return;
+    setBulkError(null);
     try {
-      await api(`/finance/bank-transactions/${t.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ categoryId: categoryId || null, manualOverride: true }),
+      await api('/finance/bank-transactions/bulk-restore', {
+        method: 'POST',
+        body: JSON.stringify({ ids, uploadId: selectedUploadId }),
       });
-      const cat = categoryId ? categories.find((c) => c.id === categoryId) : null;
-      setTransactions((prev) =>
-        prev.map((x) => (x.id === t.id ? { ...x, category: cat ?? null } : x))
-      );
-    } catch {
-      // ignore
+      setSelectedIds(new Set());
+      fetchTransactions();
+      refreshTrashCount();
+      refreshSummary();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Failed to restore');
     }
   };
 
-  const handleSiteChange = async (t: BankTransaction, siteId: string | null) => {
+  const handleBulkPermanentDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || !selectedUploadId) return;
+    setBulkError(null);
+    if (!window.confirm(`Permanently delete ${ids.length} transaction(s)? This cannot be undone.`)) return;
     try {
-      await api(`/finance/bank-transactions/${t.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ siteId: siteId || null, manualOverride: true }),
+      await api('/finance/bank-transactions/bulk-permanent-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids, uploadId: selectedUploadId }),
       });
-      const site = siteId ? sites.find((s) => s.id === siteId) : null;
-      setTransactions((prev) =>
-        prev.map((x) => (x.id === t.id ? { ...x, site: site ?? null } : x))
-      );
-    } catch {
-      // ignore
+      setSelectedIds(new Set());
+      fetchTransactions();
+      refreshTrashCount();
+      refreshSummary();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Failed to delete');
     }
   };
 
@@ -371,11 +373,6 @@ export default function BankTransactionsPage() {
     }
   };
 
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditForm({});
-  };
-
   const hasSelection = selectedIds.size > 0;
 
   return (
@@ -431,6 +428,25 @@ export default function BankTransactionsPage() {
               <option value="asc">Oldest first</option>
             </select>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              setViewTrash((v) => !v);
+              setSelectedIds(new Set());
+              setBulkError(null);
+            }}
+            className={`px-3 py-2 rounded-lg border text-sm font-medium inline-flex items-center gap-2 ${
+              viewTrash
+                ? 'bg-amber-50 border-amber-300 text-amber-900'
+                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            <span aria-hidden>♻️</span>
+            Recycle bin
+            {!viewTrash && trashCount > 0 && (
+              <span className="text-xs rounded-full bg-amber-200 px-2 py-0.5 font-semibold tabular-nums">{trashCount}</span>
+            )}
+          </button>
           <button
             onClick={() => setShowNewSite(true)}
             className="px-3 py-2 rounded-lg border border-dashed border-gray-300 text-gray-600 hover:border-blue-400 hover:text-blue-600 text-sm font-medium"
@@ -537,7 +553,7 @@ export default function BankTransactionsPage() {
             )}
           </div>
 
-          {summary && (
+          {summary && !viewTrash && (
             <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
               <button
                 onClick={() => {
@@ -589,55 +605,87 @@ export default function BankTransactionsPage() {
               <span className="text-sm font-medium text-blue-800">
                 {selectedIds.size} selected
               </span>
-              <select
-                value={bulkCategory}
-                onChange={(e) => setBulkCategory(e.target.value)}
-                className="border rounded px-2 py-1.5 text-sm"
-              >
-                <option value="">Category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name.replace(/_/g, ' ')}</option>
-                ))}
-              </select>
-              <div className="flex items-center gap-1">
-                <select
-                  value={bulkSiteId}
-                  onChange={(e) => setBulkSiteId(e.target.value)}
-                  className="border rounded px-2 py-1.5 text-sm"
-                >
-                  <option value="">Project</option>
-                  {sites.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
+              {!viewTrash && (
+                <>
+                  <select
+                    value={bulkCategory}
+                    onChange={(e) => setBulkCategory(e.target.value)}
+                    className="border rounded px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Category</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={bulkSiteId}
+                      onChange={(e) => setBulkSiteId(e.target.value)}
+                      className="border rounded px-2 py-1.5 text-sm"
+                    >
+                      <option value="">Project</option>
+                      {sites.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setShowNewSite(true)}
+                      className="px-2 py-1.5 rounded border border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 text-xs"
+                      title="New Project"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => handleBulkAssign('category')}
+                    disabled={!bulkCategory}
+                    className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
+                  >
+                    Assign category
+                  </button>
+                  <button
+                    onClick={() => handleBulkAssign('siteId')}
+                    disabled={!bulkSiteId}
+                    className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
+                  >
+                    Assign project
+                  </button>
+                  <button
+                    onClick={() => handleBulkAssign('isReviewed')}
+                    className="px-3 py-1.5 rounded bg-green-600 text-white text-sm font-medium"
+                  >
+                    Mark as reviewed
+                  </button>
+                </>
+              )}
+              {!viewTrash && (
                 <button
-                  onClick={() => setShowNewSite(true)}
-                  className="px-2 py-1.5 rounded border border-dashed border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 text-xs"
-                  title="New Project"
+                  type="button"
+                  onClick={handleBulkDeleteToRecycleBin}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-800 text-sm font-medium hover:bg-gray-50 inline-flex items-center gap-1.5"
                 >
-                  +
+                  <span aria-hidden>🗑️</span>
+                  Delete
                 </button>
-              </div>
-              <button
-                onClick={() => handleBulkAssign('category')}
-                disabled={!bulkCategory}
-                className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
-              >
-                Assign category
-              </button>
-              <button
-                onClick={() => handleBulkAssign('siteId')}
-                disabled={!bulkSiteId}
-                className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
-              >
-                Assign project
-              </button>
-              <button
-                onClick={() => handleBulkAssign('isReviewed')}
-                className="px-3 py-1.5 rounded bg-green-600 text-white text-sm font-medium"
-              >
-                Mark as reviewed
-              </button>
+              )}
+              {viewTrash && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleBulkRestore}
+                    className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                  >
+                    Restore
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBulkPermanentDelete}
+                    className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700"
+                  >
+                    Delete permanently
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => { setSelectedIds(new Set()); setBulkError(null); }}
                 className="px-3 py-1.5 rounded border border-gray-300 text-gray-700 text-sm"
@@ -655,87 +703,40 @@ export default function BankTransactionsPage() {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           {transactions.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
-              No transactions. Upload a bank statement or adjust filters.
+              {viewTrash
+                ? 'Recycle bin is empty.'
+                : 'No transactions. Upload a bank statement or adjust filters.'}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="px-3 py-2 w-10">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.size === transactions.length && transactions.length > 0}
-                        onChange={toggleSelectAll}
-                      />
-                    </th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Date</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Party Name</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700 max-w-[160px]">Description</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">Debit</th>
-                    <th className="px-4 py-3 text-right font-semibold text-gray-700">Credit</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Category</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700">Project</th>
-                    <th className="px-4 py-3 text-left font-semibold text-gray-700 w-20">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {transactions.map((t) => (
-                    <tr key={t.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(t.id)}
-                          onChange={() => toggleSelect(t.id)}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(t.transactionDate)}</td>
-                      <td className="px-4 py-3 text-gray-700">{t.partyName ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-600 max-w-[160px] truncate" title={t.description ?? undefined}>
-                        {t.description ?? '—'}
-                      </td>
-                      <td className="px-4 py-3 text-right text-rose-600 font-medium">
-                        {t.type === 'EXPENSE' ? fmt(t.amount) : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-right text-emerald-600 font-medium">
-                        {t.type === 'INCOME' ? fmt(t.amount) : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={t.category?.id ?? ''}
-                          onChange={(e) => handleCategoryChange(t, e.target.value || null)}
-                          className="border rounded px-2 py-1 text-xs min-w-[100px]"
-                        >
-                          <option value="">—</option>
-                          {categories.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name.replace(/_/g, ' ')}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <select
-                          value={t.site?.id ?? ''}
-                          onChange={(e) => handleSiteChange(t, e.target.value || null)}
-                          className="border rounded px-2 py-1 text-xs min-w-[100px]"
-                        >
-                          <option value="">—</option>
-                          {sites.map((s) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleEdit(t)}
-                          className="text-blue-600 hover:text-blue-700 text-xs font-medium"
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="border-t border-gray-100">
+              <div
+                className={`px-3 py-2 border-b flex items-center gap-2 text-xs ${
+                  viewTrash ? 'bg-amber-50/90 border-amber-200 text-amber-900' : 'bg-gray-50/80 border-gray-100 text-gray-600'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === transactions.length && transactions.length > 0}
+                  onChange={toggleSelectAll}
+                />
+                {viewTrash ? (
+                  <span>Recycle bin — select rows to restore or delete permanently</span>
+                ) : (
+                  <span>Select all for bulk actions</span>
+                )}
+              </div>
+              <BankTransactionsTable
+                uploadId={selectedUploadId}
+                transactions={transactions}
+                setTransactions={setTransactions}
+                categories={categories}
+                sites={sites}
+                onTotalsRefresh={refreshSummary}
+                onTransactionsRefresh={fetchTransactions}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                disableDrag={viewTrash}
+              />
             </div>
           )}
         </div>
@@ -904,66 +905,6 @@ export default function BankTransactionsPage() {
         </div>
       )}
 
-      {editingId && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
-            <h3 className="text-lg font-semibold mb-4">Edit Transaction</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Type</label>
-                <select
-                  value={editForm.type}
-                  onChange={(e) => setEditForm((f) => ({ ...f, type: e.target.value }))}
-                  className="w-full border rounded px-3 py-2"
-                >
-                  <option value="INCOME">Received</option>
-                  <option value="EXPENSE">Expense</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Party Name</label>
-                <input
-                  value={editForm.partyName ?? ''}
-                  onChange={(e) => setEditForm((f) => ({ ...f, partyName: e.target.value }))}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Category</label>
-                <select
-                  value={editForm.category?.id ?? ''}
-                  onChange={(e) => {
-                    const c = categories.find((x) => x.id === e.target.value);
-                    setEditForm((f) => ({ ...f, category: c ?? null }));
-                  }}
-                  className="w-full border rounded px-3 py-2"
-                >
-                  <option value="">—</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name.replace(/_/g, ' ')}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Description</label>
-                <input
-                  value={editForm.description ?? ''}
-                  onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-            </div>
-            <div className="mt-6 flex gap-2">
-              <button onClick={handleSaveEdit} className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium">
-                Save
-              </button>
-              <button onClick={handleCancelEdit} className="px-4 py-2 rounded-lg border border-gray-300">
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

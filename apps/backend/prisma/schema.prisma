@@ -520,6 +520,7 @@ model Vendor {
 model FinanceClient {
   id          String   @id @default(cuid())
   name        String
+  companyName String?  // billing / legal entity name
   gstin       String?
   contact     String?
   address     String?
@@ -596,6 +597,7 @@ model TransactionCategory {
 model BankTransaction {
   id                String   @id @default(cuid())
   uploadId          String
+  sortOrder         Int      @default(0) @map("sort_order") // manual order within upload (drag-drop)
   transactionDate   DateTime
   valueDate         DateTime?
   referenceNo       String?
@@ -611,6 +613,7 @@ model BankTransaction {
   duplicateOfId     String?  // if duplicate, points to canonical transaction
   processed         Boolean  @default(false)
   manualOverride    Boolean  @default(false)
+  deletedAt         DateTime? @map("deleted_at")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -620,6 +623,8 @@ model BankTransaction {
   duplicateOf  BankTransaction?     @relation("DuplicateOf", fields: [duplicateOfId], references: [id], onDelete: SetNull)
   duplicates   BankTransaction[]    @relation("DuplicateOf")
   splits       TransactionSplit[]
+  purchaseBill PurchaseBill?        @relation("PurchaseBillBankTransaction")
+  salesBill    SalesBill?           @relation("SalesBillBankTransaction")
 
   @@map("finance_bank_transactions")
 }
@@ -636,6 +641,8 @@ model TransactionSplit {
   transaction BankTransaction       @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   category    TransactionCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   site        FinanceSite?          @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  purchaseBill PurchaseBill?        @relation("PurchaseBillSplitTransaction")
+  salesBill    SalesBill?           @relation("SalesBillSplitTransaction")
 
   @@map("finance_transaction_splits")
 }
@@ -703,11 +710,15 @@ model PurchaseBill {
   gstAmount    Float
   totalAmount  Float
   fileUrl      String?
+  bankTransactionId String? @unique @map("bank_transaction_id")
+  transactionSplitId String? @unique @map("transaction_split_id")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  vendor   Vendor          @relation(fields: [vendorId], references: [id], onDelete: Restrict)
-  project  FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  vendor           Vendor             @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  project          FinanceProject?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  bankTransaction  BankTransaction?   @relation("PurchaseBillBankTransaction", fields: [bankTransactionId], references: [id], onDelete: SetNull)
+  transactionSplit TransactionSplit?  @relation("PurchaseBillSplitTransaction", fields: [transactionSplitId], references: [id], onDelete: SetNull)
 
   @@map("finance_purchase_bills")
 }
@@ -722,34 +733,78 @@ model SalesBill {
   gstAmount    Float
   totalAmount  Float
   fileUrl      String?
+  bankTransactionId String? @unique @map("bank_transaction_id")
+  transactionSplitId String? @unique @map("transaction_split_id")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  client   FinanceClient   @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  project  FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client           FinanceClient      @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  project          FinanceProject?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  bankTransaction  BankTransaction?   @relation("SalesBillBankTransaction", fields: [bankTransactionId], references: [id], onDelete: SetNull)
+  transactionSplit TransactionSplit?  @relation("SalesBillSplitTransaction", fields: [transactionSplitId], references: [id], onDelete: SetNull)
 
   @@map("finance_sales_bills")
 }
 
-enum InvoiceType {
+// Tax / Proforma / Quotation / E-Way — numbering is per main kind.
+enum InvoiceMainKind {
+  TAX_INVOICE
+  PROFORMA_INVOICE
+  QUOTATION
+  EWAY_BILL
+}
+
+// SPGS vs line-item modes — templates are one per subtype (3 total).
+enum InvoiceSubtype {
   SPGS
-  PRODUCT
   SERVICE
-  PROFORMA
+  PRODUCT
+}
+
+model InvoiceTemplate {
+  id        String         @id @default(cuid())
+  name      String
+  slug      String         @unique
+  subtype   InvoiceSubtype @unique
+  config    Json
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  invoices Invoice[]
+
+  @@map("finance_invoice_templates")
+}
+
+model FinanceInvoiceSequence {
+  mainKind   InvoiceMainKind @id @map("main_kind")
+  prefix     String          @default("")
+  lastNumber Int             @default(0) @map("last_number")
+  updatedAt  DateTime       @updatedAt
+
+  @@map("finance_invoice_sequences")
 }
 
 model Invoice {
-  id           String      @id @default(cuid())
-  type         InvoiceType
-  clientId     String
-  quotationId   String?
-  items        Json        // line items
-  totalAmount  Float
-  fileUrl      String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime   @updatedAt
+  id              String          @id @default(cuid())
+  mainKind        InvoiceMainKind   @map("main_kind")
+  subtype         InvoiceSubtype
+  clientId        String
+  quotationId     String?
+  items           Json
+  totalAmount     Float
+  fileUrl         String?
+  invoiceNumber   String?         @map("invoice_number")
+  invoiceDate     DateTime?       @map("invoice_date")
+  templateId      String?         @map("template_id")
+  deletedAt       DateTime?       @map("deleted_at")
+  convertedFromId String?         @map("converted_from_id")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  client FinanceClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  client          FinanceClient    @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  template        InvoiceTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  convertedFrom   Invoice?         @relation("InvoiceConversion", fields: [convertedFromId], references: [id], onDelete: SetNull)
+  convertedTo     Invoice[]        @relation("InvoiceConversion")
 
   @@map("finance_invoices")
 }

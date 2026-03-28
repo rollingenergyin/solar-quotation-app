@@ -34,7 +34,8 @@ function getChromeExecutablePath(): string | undefined {
 
 let browserInstance: Browser | null = null;
 
-async function getBrowser(): Promise<Browser> {
+/** Shared Chromium instance for HTML→PDF (quotations, SPGS invoices). */
+export async function getBrowser(): Promise<Browser> {
   if (browserInstance && browserInstance.connected) return browserInstance;
   const executablePath = getChromeExecutablePath();
   browserInstance = await puppeteer.launch({
@@ -175,7 +176,8 @@ export async function generateQuotationPdf(options: GeneratePdfOptions): Promise
     await page.emulateMediaType('screen');
 
     await page.setContent(html, {
-      waitUntil: 'networkidle0',
+      waitUntil: 'domcontentloaded',
+      timeout: 60_000,
     });
     await page.addStyleTag({
       content: 'body { margin: 0; }',
@@ -227,7 +229,8 @@ export async function generateQuotationPdfBuffer(quotationId: string): Promise<B
     await page.emulateMediaType('screen');
 
     await page.setContent(html, {
-      waitUntil: 'networkidle0',
+      waitUntil: 'domcontentloaded',
+      timeout: 60_000,
     });
     await page.addStyleTag({
       content: 'body { margin: 0; }',

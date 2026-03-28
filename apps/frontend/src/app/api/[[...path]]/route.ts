@@ -54,12 +54,30 @@ async function proxy(request: NextRequest, pathSegments?: string[]) {
     if (res.status === 204) {
       return new NextResponse(null, { status: 204 });
     }
+    const ct = res.headers.get('content-type') || 'application/json';
+    // PDF and other binary bodies must not go through .text() (encoding corruption).
+    if (
+      ct.includes('application/pdf') ||
+      ct.startsWith('image/') ||
+      (ct.includes('application/octet-stream') && !ct.includes('json'))
+    ) {
+      const buf = await res.arrayBuffer();
+      const out = new Headers();
+      out.set('content-type', ct);
+      const cd = res.headers.get('content-disposition');
+      if (cd) out.set('content-disposition', cd);
+      return new NextResponse(buf, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: out,
+      });
+    }
     const data = await res.text();
     return new NextResponse(data, {
       status: res.status,
       statusText: res.statusText,
       headers: {
-        'content-type': res.headers.get('content-type') || 'application/json',
+        'content-type': ct,
       },
     });
   } catch (err) {

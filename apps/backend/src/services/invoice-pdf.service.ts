@@ -4,6 +4,7 @@
  */
 
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { fmtInrAmount, pdfSafeText } from './pdf-winansi.js';
 
 const COMPANY = {
   name: 'Rolling Energy',
@@ -26,6 +27,8 @@ export interface InvoiceItem {
 export interface InvoicePdfData {
   invoiceNo: string;
   type: string;
+  /** When set, replaces the default "TAX INVOICE" title (Proforma, Quotation, E-Way, etc.). */
+  documentTitle?: string;
   date: string;
   client: {
     name: string;
@@ -40,10 +43,11 @@ export interface InvoicePdfData {
   sgst: number;
   gstAmount: number;
   totalAmount: number;
+  /** When true, show a single GST line (per-line GST amounts summed; avoids wrong CGST/SGST split). */
+  gstAggregateOnly?: boolean;
 }
 
 const fmtNum = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtCurrency = (n: number) => '₹ ' + fmtNum(n);
 
 export async function generateInvoicePdf(data: InvoicePdfData): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -65,7 +69,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<Uint8Arr
   y -= 30;
 
   // ─── Title & invoice meta ───────────────────────────────────────────────
-  page.drawText('TAX INVOICE', { x: padding, y, size: 16, font: fontBold, color: rgb(0, 0, 0) });
+  page.drawText(data.documentTitle ?? 'TAX INVOICE', { x: padding, y, size: 16, font: fontBold, color: rgb(0, 0, 0) });
   y -= 25;
 
   // Invoice no, type, date (right aligned)
@@ -81,14 +85,14 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<Uint8Arr
   // ─── Bill to ─────────────────────────────────────────────────────────────
   page.drawText('Bill To', { x: padding, y, size: 10, font: fontBold });
   y -= 12;
-  page.drawText(data.client.name, { x: padding, y, size: 10, font });
+  page.drawText(pdfSafeText(data.client.name), { x: padding, y, size: 10, font });
   y -= 12;
   if (data.client.address) {
-    page.drawText(data.client.address, { x: padding, y, size: 9, font, color: rgb(0.3, 0.3, 0.3) });
+    page.drawText(pdfSafeText(data.client.address), { x: padding, y, size: 9, font, color: rgb(0.3, 0.3, 0.3) });
     y -= 10;
   }
   if (data.client.gstin) {
-    page.drawText(`GSTIN: ${data.client.gstin}`, { x: padding, y, size: 9, font, color: rgb(0.3, 0.3, 0.3) });
+    page.drawText(pdfSafeText(`GSTIN: ${data.client.gstin}`), { x: padding, y, size: 9, font, color: rgb(0.3, 0.3, 0.3) });
     y -= 10;
   }
   y -= 20;
@@ -110,16 +114,17 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<Uint8Arr
   hx += colW.hsn;
   page.drawText('Qty', { x: hx, y: y + 4, size: 9, font: fontBold });
   hx += colW.qty;
-  page.drawText('Rate (₹)', { x: hx, y: y + 4, size: 9, font: fontBold });
+  page.drawText('Rate (Rs.)', { x: hx, y: y + 4, size: 9, font: fontBold });
   hx += colW.rate;
-  page.drawText('Amount (₹)', { x: hx, y: y + 4, size: 9, font: fontBold });
+  page.drawText('Amount (Rs.)', { x: hx, y: y + 4, size: 9, font: fontBold });
   y -= rowH + 4;
 
   data.items.forEach((item, i) => {
-    const desc = (item.description ? `${item.name} – ${item.description}` : item.name).slice(0, 50);
+    const rawDesc = (item.description ? `${item.name} - ${item.description}` : item.name).slice(0, 50);
+    const desc = pdfSafeText(rawDesc);
     page.drawText(String(i + 1), { x: startX + 6, y, size: 9, font });
     page.drawText(desc, { x: startX + colW.sr + 6, y, size: 9, font });
-    page.drawText(item.hsn ?? '8541', { x: startX + colW.sr + colW.desc + 6, y, size: 9, font });
+    page.drawText(pdfSafeText(item.hsn ?? '8541'), { x: startX + colW.sr + colW.desc + 6, y, size: 9, font });
     page.drawText(String(item.qty), { x: startX + colW.sr + colW.desc + colW.hsn + 6, y, size: 9, font });
     page.drawText(fmtNum(item.rate), { x: startX + colW.sr + colW.desc + colW.hsn + colW.qty + 6, y, size: 9, font });
     page.drawText(fmtNum(item.amount), { x: startX + colW.sr + colW.desc + colW.hsn + colW.qty + colW.rate + 6, y, size: 9, font });
@@ -131,30 +136,36 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<Uint8Arr
   // ─── Totals & GST ───────────────────────────────────────────────────────
   const totX = 380;
   page.drawText(`Subtotal:`, { x: totX, y, size: 9, font });
-  page.drawText(fmtCurrency(data.subtotal), { x: totX + 120, y, size: 9, font });
+  page.drawText(fmtInrAmount(data.subtotal), { x: totX + 120, y, size: 9, font });
   y -= 12;
   if (data.gstAmount > 0) {
-    page.drawText(`CGST @ ${data.gstRate / 2}%:`, { x: totX, y, size: 9, font });
-    page.drawText(fmtCurrency(data.cgst), { x: totX + 120, y, size: 9, font });
-    y -= 12;
-    page.drawText(`SGST @ ${data.gstRate / 2}%:`, { x: totX, y, size: 9, font });
-    page.drawText(fmtCurrency(data.sgst), { x: totX + 120, y, size: 9, font });
-    y -= 12;
+    if (data.gstAggregateOnly) {
+      page.drawText('GST:', { x: totX, y, size: 9, font });
+      page.drawText(fmtInrAmount(data.gstAmount), { x: totX + 120, y, size: 9, font });
+      y -= 12;
+    } else {
+      page.drawText(`CGST @ ${data.gstRate / 2}%:`, { x: totX, y, size: 9, font });
+      page.drawText(fmtInrAmount(data.cgst), { x: totX + 120, y, size: 9, font });
+      y -= 12;
+      page.drawText(`SGST @ ${data.gstRate / 2}%:`, { x: totX, y, size: 9, font });
+      page.drawText(fmtInrAmount(data.sgst), { x: totX + 120, y, size: 9, font });
+      y -= 12;
+    }
   }
   page.drawRectangle({ x: totX - 5, y: y - 2, width: 155, height: 22, color: rgb(0.96, 0.96, 0.96) });
   page.drawText('Total:', { x: totX, y: y + 4, size: 11, font: fontBold });
-  page.drawText(fmtCurrency(data.totalAmount), { x: totX + 100, y: y + 4, size: 11, font: fontBold });
+  page.drawText(fmtInrAmount(data.totalAmount), { x: totX + 100, y: y + 4, size: 11, font: fontBold });
   y -= 35;
 
   // ─── Footer ─────────────────────────────────────────────────────────────
-  page.drawText('System Generated – No Signature Required', {
+  page.drawText('This is a system generated invoice. No signature required.', {
     x: padding,
     y: 50,
     size: 8,
     font,
     color: rgb(0.5, 0.5, 0.5),
   });
-  page.drawText(`Generated on ${new Date().toLocaleString('en-IN')}`, {
+  page.drawText(pdfSafeText(`Generated on ${new Date().toLocaleString('en-IN')}`), {
     x: padding,
     y: 38,
     size: 7,

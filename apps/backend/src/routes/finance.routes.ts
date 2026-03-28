@@ -1,16 +1,197 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { body, validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient, type InvoiceMainKind, type InvoiceSubtype } from '@prisma/client';
 import multer from 'multer';
+import { join, resolve } from 'path';
+import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'fs';
+import { randomBytes } from 'crypto';
 import { authenticate } from '../middleware/auth.js';
 import { requireFinanceAccess } from '../middleware/finance-access.js';
 import { bankStatementService } from '../services/bank-statement.service.js';
 import { getProjectCostingSummary, getProjectsSummary } from '../services/project-costing.service.js';
 import * as financeAuthService from '../services/finance-auth.service.js';
+import { computeSpgsTotals, type SpgsInput } from '../services/invoice-spgs.service.js';
+import { generateSpgsTurnkeyPdf } from '../services/invoice-pdf-spgs.js';
+import { placeOfSupplyFromGstin } from '../services/spgs-invoice-pdf/placeOfSupply.js';
+import { createDefaultInvoiceTemplateConfig, mergeInvoiceTemplateConfig } from '../services/invoice-template-config.js';
+import {
+  canConvertInvoice,
+  documentTitleForMainKind,
+  mergeTemplateConfigWithMainKind,
+} from '../services/invoice-document-kind.js';
+import {
+  allocateNextInvoiceNumber,
+  ensureFinanceInvoiceSequences,
+  peekNextInvoiceNumber,
+} from '../services/invoice-sequence.service.js';
+import { buildSampleSpgsPdfInputForPreview } from '../services/invoice-template-preview.js';
+import { buildSpgsInvoiceHtmlDocument } from '../services/spgs-invoice-html/spgsInvoiceHtmlDocument.js';
+import { resolveInvoiceLogoDataUrl } from '../services/spgs-invoice-html/renderSpgsPdfFromHtml.js';
+import { getInvoiceBranding } from '../services/invoice-branding.js';
+import {
+  uploadBankTransactionBill,
+  deleteBankTransactionBill,
+  contentTypeForBankBillFile,
+  BANK_BILL_DIR,
+} from '../services/bank-transaction-bill.service.js';
+
+async function deleteBankBillsBeforeSplitRewrite(transactionId: string): Promise<void> {
+  try {
+    await deleteBankTransactionBill(transactionId, undefined);
+    const oldSplits = await prisma.transactionSplit.findMany({
+      where: { transactionId },
+      select: { id: true },
+    });
+    for (const s of oldSplits) {
+      await deleteBankTransactionBill(transactionId, s.id);
+    }
+  } catch (e) {
+    // DB may not have bill-link columns yet, or cleanup is optional — do not block split create/clear.
+    console.warn('FINANCE: deleteBankBillsBeforeSplitRewrite skipped:', e);
+  }
+}
 
 const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
+
+const INVOICE_ANNEXURE_DIR = join(process.cwd(), 'uploads', 'invoice-annexures');
+
+/** YYYY-MM-DD from client → UTC calendar date for storage */
+function parseInvoiceDateBody(value: unknown): Date | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!m) return undefined;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo, d));
+  return Number.isNaN(dt.getTime()) ? undefined : dt;
+}
+
+function formatInvoicePdfDate(d: Date): string {
+  return d.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
+type InvoiceDocumentMeta = { invoiceNumber?: string; invoiceDate?: string };
+
+function getDocumentMetaFromItems(items: unknown): InvoiceDocumentMeta {
+  if (!items || typeof items !== 'object' || Array.isArray(items)) return {};
+  const o = items as { version?: number; documentMeta?: InvoiceDocumentMeta };
+  if (o.version !== 2 || !o.documentMeta || typeof o.documentMeta !== 'object') return {};
+  const m = o.documentMeta;
+  return {
+    invoiceNumber: typeof m.invoiceNumber === 'string' ? m.invoiceNumber.trim() : undefined,
+    invoiceDate: typeof m.invoiceDate === 'string' ? m.invoiceDate.trim() : undefined,
+  };
+}
+
+/** Display number on PDF: simple "1", "2", … or legacy INV-… */
+function invoiceDocNo(invoice: { id: string; items: unknown; invoiceNumber?: string | null }): string {
+  const col = invoice.invoiceNumber?.trim();
+  if (col) return col;
+  const n = getDocumentMetaFromItems(invoice.items).invoiceNumber;
+  if (n) return n;
+  return `INV-${invoice.id.slice(-8).toUpperCase()}`;
+}
+
+function invoicePdfDateDisplay(invoice: {
+  createdAt: Date;
+  items: unknown;
+  invoiceDate?: Date | null;
+}): string {
+  if (invoice.invoiceDate) {
+    return formatInvoicePdfDate(new Date(invoice.invoiceDate));
+  }
+  const raw = getDocumentMetaFromItems(invoice.items).invoiceDate;
+  if (raw) {
+    const parsed = parseInvoiceDateBody(raw);
+    if (parsed) return formatInvoicePdfDate(parsed);
+  }
+  return new Date(invoice.createdAt).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function normalizeInvoiceNumber(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return null;
+  const s = value.trim();
+  if (!s) return null;
+  if (!/^\d+$/.test(s)) return null;
+  return s;
+}
+
+/** DB missing `finance_invoices.deleted_at` (soft-delete migration not applied). */
+function isMissingInvoiceDeletedAtColumn(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: string; meta?: { column?: unknown }; message?: string };
+  const m = e.message ?? '';
+  if (/deleted_at/i.test(m) && (/does not exist/i.test(m) || /Unknown column/i.test(m))) return true;
+  if (e.code === 'P2022') {
+    const col = e.meta?.column;
+    if (typeof col === 'string' && col.includes('deleted_at')) return true;
+    return /deleted_at/i.test(m);
+  }
+  return false;
+}
+
+const SUBTYPE_ORDER: InvoiceSubtype[] = ['SPGS', 'SERVICE', 'PRODUCT'];
+
+const SYSTEM_INVOICE_TEMPLATE_SLUGS: Record<InvoiceSubtype, string> = {
+  SPGS: 'system-spgs',
+  SERVICE: 'system-service',
+  PRODUCT: 'system-product',
+};
+
+const SYSTEM_INVOICE_TEMPLATE_NAMES: Record<InvoiceSubtype, string> = {
+  SPGS: 'SPGS (layout)',
+  SERVICE: 'Service (layout)',
+  PRODUCT: 'Product (layout)',
+};
+
+async function ensureDefaultInvoiceTemplates(): Promise<void> {
+  const def = createDefaultInvoiceTemplateConfig();
+  const json = def as unknown as Prisma.InputJsonValue;
+  for (const t of SUBTYPE_ORDER) {
+    const slug = SYSTEM_INVOICE_TEMPLATE_SLUGS[t];
+    const name = SYSTEM_INVOICE_TEMPLATE_NAMES[t];
+    const bySubtype = await prisma.invoiceTemplate.findUnique({ where: { subtype: t } });
+    const bySlug = await prisma.invoiceTemplate.findUnique({ where: { slug } });
+    // Legacy/migrated DBs may have the canonical slug on a row with the wrong subtype.
+    // Upsert-by-subtype alone would try to CREATE and hit unique `slug`.
+    if (bySubtype && bySlug && bySubtype.id !== bySlug.id) {
+      await prisma.invoiceTemplate.update({
+        where: { id: bySlug.id },
+        data: { slug: `${slug}-superseded-${bySlug.id.slice(-6)}` },
+      });
+    }
+    const target = bySubtype ?? bySlug;
+    if (target) {
+      await prisma.invoiceTemplate.update({
+        where: { id: target.id },
+        data: { name, slug, subtype: t, config: json },
+      });
+    } else {
+      await prisma.invoiceTemplate.create({
+        data: { name, slug, subtype: t, config: json },
+      });
+    }
+  }
+}
+
+async function resolveTemplateIdForSubtype(subtype: InvoiceSubtype): Promise<string | null> {
+  await ensureDefaultInvoiceTemplates();
+  const row = await prisma.invoiceTemplate.findUnique({ where: { subtype } });
+  return row?.id ?? null;
+}
 
 type Period = 'daily' | 'monthly' | 'yearly';
 
@@ -226,16 +407,63 @@ router.get('/clients', async (_req: Request, res: Response) => {
   }
 });
 
+function emptyToNull(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
+}
+
 router.post('/clients', async (req: Request, res: Response) => {
   try {
-    const { name, gstin, contact, address, customerId } = req.body;
+    const { name, companyName, gstin, contact, address, customerId } = req.body ?? {};
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!trimmedName) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const cid = typeof customerId === 'string' ? customerId.trim() : '';
+    if (cid) {
+      const salesCustomer = await prisma.customer.findUnique({
+        where: { id: cid },
+        select: { id: true },
+      });
+      if (!salesCustomer) {
+        return res.status(400).json({
+          error:
+            'Linked sales customer no longer exists. Create the client without linking, or pick import again.',
+        });
+      }
+    }
+
     const client = await prisma.financeClient.create({
-      data: { name, gstin, contact, address, customerId },
+      data: {
+        name: trimmedName,
+        companyName: emptyToNull(companyName),
+        gstin: emptyToNull(gstin),
+        contact: emptyToNull(contact),
+        address: emptyToNull(address),
+        customerId: cid || null,
+      },
     });
     res.status(201).json(client);
   } catch (err) {
     console.error('FINANCE CLIENT CREATE ERROR:', err);
-    res.status(500).json({ error: 'Failed to create client' });
+    const isDev = process.env.NODE_ENV !== 'production';
+    let error = 'Failed to create client';
+    let details: string | undefined;
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      details = err.message;
+      if (err.code === 'P2022') {
+        error =
+          'Database is missing a column (often companyName). From apps/backend run: npm run db:fix-company-column — or: npx prisma db push — If migrations are blocked, fix the failed migration then: npx prisma migrate deploy';
+      }
+    } else if (err instanceof Error) {
+      details = err.message;
+    }
+    res.status(500).json({
+      error,
+      ...(details && (isDev || error.includes('migrate')) ? { details } : {}),
+    });
   }
 });
 
@@ -254,10 +482,10 @@ router.get('/clients/:id', async (req: Request, res: Response) => {
 
 router.put('/clients/:id', async (req: Request, res: Response) => {
   try {
-    const { name, gstin, contact, address, customerId } = req.body;
+    const { name, companyName, gstin, contact, address, customerId } = req.body;
     const client = await prisma.financeClient.update({
       where: { id: req.params.id },
-      data: { name, gstin, contact, address, customerId },
+      data: { name, companyName, gstin, contact, address, customerId },
     });
     res.json(client);
   } catch (err) {
@@ -508,6 +736,7 @@ router.get('/bank-transactions', async (req: Request, res: Response) => {
     const excludeCategories = req.query.excludeCategories as string | undefined;  // comma-separated, hide these
     const siteId = req.query.siteId as string | undefined;
     const uncategorizedOnly = req.query.uncategorized === 'true';
+    const trash = req.query.trash === 'true';
     const sortDate = (req.query.sortDate as 'asc' | 'desc') || 'desc';
     const fromStr = req.query.from as string | undefined;
     const toStr = req.query.to as string | undefined;
@@ -533,12 +762,28 @@ router.get('/bank-transactions', async (req: Request, res: Response) => {
       to: isNaN(to?.getTime() ?? 1) ? undefined : to,
       limit,
       offset,
+      trash,
     });
 
     res.json({ transactions, total });
   } catch (err) {
     console.error('FINANCE BANK TRANSACTIONS LIST ERROR:', err);
     res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
+});
+
+router.post('/bank-transactions/reorder', async (req: Request, res: Response) => {
+  try {
+    const { uploadId, orderedIds } = req.body as { uploadId?: string; orderedIds?: string[] };
+    if (!uploadId || !Array.isArray(orderedIds) || orderedIds.length === 0) {
+      return res.status(400).json({ error: 'uploadId and orderedIds required' });
+    }
+    await bankStatementService.reorderTransactions(uploadId, orderedIds);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('FINANCE BANK TRANSACTIONS REORDER ERROR:', err);
+    const msg = err instanceof Error ? err.message : 'Failed to reorder';
+    res.status(400).json({ error: msg });
   }
 });
 
@@ -560,13 +805,58 @@ router.patch('/bank-transactions/bulk', async (req: Request, res: Response) => {
   }
 });
 
+router.post('/bank-transactions/bulk-soft-delete', async (req: Request, res: Response) => {
+  try {
+    const { ids, uploadId } = req.body as { ids?: string[]; uploadId?: string };
+    if (!uploadId || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'uploadId and ids required' });
+    }
+    const result = await bankStatementService.bulkSoftDelete(uploadId, ids);
+    res.json(result);
+  } catch (err) {
+    console.error('FINANCE BULK SOFT DELETE ERROR:', err);
+    res.status(500).json({ error: 'Failed to move to recycle bin' });
+  }
+});
+
+router.post('/bank-transactions/bulk-restore', async (req: Request, res: Response) => {
+  try {
+    const { ids, uploadId } = req.body as { ids?: string[]; uploadId?: string };
+    if (!uploadId || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'uploadId and ids required' });
+    }
+    const result = await bankStatementService.bulkRestore(uploadId, ids);
+    res.json(result);
+  } catch (err) {
+    console.error('FINANCE BULK RESTORE ERROR:', err);
+    res.status(500).json({ error: 'Failed to restore transactions' });
+  }
+});
+
+router.post('/bank-transactions/bulk-permanent-delete', async (req: Request, res: Response) => {
+  try {
+    const { ids, uploadId } = req.body as { ids?: string[]; uploadId?: string };
+    if (!uploadId || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'uploadId and ids required' });
+    }
+    const result = await bankStatementService.bulkHardDelete(uploadId, ids);
+    res.json(result);
+  } catch (err) {
+    console.error('FINANCE BULK PERMANENT DELETE ERROR:', err);
+    res.status(500).json({ error: 'Failed to delete transactions' });
+  }
+});
+
 router.get('/bank-transactions/summary', async (req: Request, res: Response) => {
   try {
     const uploadId = req.query.uploadId as string | undefined;
     const fromStr = req.query.from as string | undefined;
     const toStr = req.query.to as string | undefined;
 
-    const where: Parameters<typeof prisma.bankTransaction.aggregate>[0]['where'] = { duplicateOfId: null };
+    const where: Parameters<typeof prisma.bankTransaction.aggregate>[0]['where'] = {
+      duplicateOfId: null,
+      deletedAt: null,
+    };
     if (uploadId) where.uploadId = uploadId;
     if (fromStr || toStr) {
       where.transactionDate = {};
@@ -574,24 +864,43 @@ router.get('/bank-transactions/summary', async (req: Request, res: Response) => 
       if (toStr) (where.transactionDate as { lte?: Date }).lte = new Date(toStr);
     }
 
-    const [byCategory, uncategorizedCount, totalIncome, totalExpense] = await Promise.all([
-      prisma.bankTransaction.groupBy({
-        by: ['categoryId'],
+    const [expenseRows, uncategorizedCount, totalIncome, totalExpense] = await Promise.all([
+      prisma.bankTransaction.findMany({
         where: { ...where, type: 'EXPENSE' },
-        _sum: { amount: true },
+        select: {
+          amount: true,
+          isSplit: true,
+          categoryId: true,
+          splits: { select: { amount: true, categoryId: true } },
+        },
       }),
-      prisma.bankTransaction.count({ where: { ...where, categoryId: null } }),
+      prisma.bankTransaction.count({ where: { ...where, isSplit: false, categoryId: null } }),
       prisma.bankTransaction.aggregate({ where: { ...where, type: 'INCOME' }, _sum: { amount: true } }),
       prisma.bankTransaction.aggregate({ where: { ...where, type: 'EXPENSE' }, _sum: { amount: true } }),
     ]);
 
-    const catIds = [...new Set(byCategory.map((r) => r.categoryId).filter(Boolean))] as string[];
+    const catIds = [
+      ...new Set(
+        expenseRows.flatMap((e) =>
+          e.isSplit ? e.splits.map((s) => s.categoryId) : e.categoryId ? [e.categoryId] : []
+        )
+      ),
+    ].filter(Boolean) as string[];
     const cats = catIds.length ? await prisma.transactionCategory.findMany({ where: { id: { in: catIds } } }) : [];
     const catMap = Object.fromEntries(cats.map((c) => [c.id, c.name]));
     const byCategoryMap: Record<string, number> = {};
-    for (const r of byCategory) {
-      const key = r.categoryId ? (catMap[r.categoryId] ?? r.categoryId) : 'UNCATEGORIZED';
-      byCategoryMap[key] = (byCategoryMap[key] ?? 0) + (r._sum.amount ?? 0);
+    for (const t of expenseRows) {
+      if (t.isSplit && t.splits.length > 0) {
+        for (const s of t.splits) {
+          const key = catMap[s.categoryId] ?? s.categoryId;
+          byCategoryMap[key] = (byCategoryMap[key] ?? 0) + s.amount;
+        }
+      } else if (!t.isSplit) {
+        const key = t.categoryId ? (catMap[t.categoryId] ?? t.categoryId) : 'UNCATEGORIZED';
+        byCategoryMap[key] = (byCategoryMap[key] ?? 0) + t.amount;
+      } else if (t.isSplit && t.splits.length === 0) {
+        byCategoryMap['UNCATEGORIZED'] = (byCategoryMap['UNCATEGORIZED'] ?? 0) + t.amount;
+      }
     }
 
     res.json({
@@ -610,9 +919,18 @@ router.get('/bank-uploads', async (_req: Request, res: Response) => {
   try {
     const uploads = await prisma.bankStatementUpload.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { transactions: true } } },
     });
-    res.json(uploads);
+    const uploadsWithCount = await Promise.all(
+      uploads.map(async (u) => ({
+        ...u,
+        _count: {
+          transactions: await prisma.bankTransaction.count({
+            where: { uploadId: u.id, deletedAt: null },
+          }),
+        },
+      }))
+    );
+    res.json(uploadsWithCount);
   } catch (err) {
     console.error('FINANCE BANK UPLOADS LIST ERROR:', err);
     res.status(500).json({ error: 'Failed to fetch uploads' });
@@ -793,17 +1111,18 @@ router.post('/bank-transactions/:id/splits', async (req: Request, res: Response)
     if (!Array.isArray(splits) || splits.length === 0) {
       return res.status(400).json({ error: 'splits array required' });
     }
-    const txn = await prisma.bankTransaction.findUnique({
-      where: { id: req.params.id },
+    const txn = await prisma.bankTransaction.findFirst({
+      where: { id: req.params.id, deletedAt: null },
       select: { amount: true, id: true },
     });
-    if (!txn) return res.status(404).json({ error: 'Transaction not found' });
+    if (!txn) return res.status(404).json({ error: 'Transaction not found or is in the recycle bin' });
 
     const totalSplit = splits.reduce((s, sp) => s + sp.amount, 0);
     if (Math.abs(totalSplit - txn.amount) > 0.01) {
       return res.status(400).json({ error: 'Split amounts must sum to transaction amount' });
     }
 
+    await deleteBankBillsBeforeSplitRewrite(req.params.id);
     await prisma.transactionSplit.deleteMany({ where: { transactionId: req.params.id } });
 
     const created = await prisma.$transaction(
@@ -823,18 +1142,25 @@ router.post('/bank-transactions/:id/splits', async (req: Request, res: Response)
 
     await prisma.bankTransaction.update({
       where: { id: req.params.id },
-      data: { isSplit: true, categoryId: null },
+      data: { isSplit: true, categoryId: null, siteId: null },
     });
 
     res.status(201).json(created);
   } catch (err) {
     console.error('FINANCE TRANSACTION SPLIT CREATE ERROR:', err);
-    res.status(500).json({ error: 'Failed to create splits' });
+    const msg = err instanceof Error ? err.message : 'Failed to create splits';
+    res.status(500).json({ error: msg });
   }
 });
 
 router.delete('/bank-transactions/:id/splits', async (req: Request, res: Response) => {
   try {
+    const active = await prisma.bankTransaction.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!active) return res.status(404).json({ error: 'Transaction not found or is in the recycle bin' });
+    await deleteBankBillsBeforeSplitRewrite(req.params.id);
     await prisma.transactionSplit.deleteMany({ where: { transactionId: req.params.id } });
     await prisma.bankTransaction.update({
       where: { id: req.params.id },
@@ -844,6 +1170,89 @@ router.delete('/bank-transactions/:id/splits', async (req: Request, res: Respons
   } catch (err) {
     console.error('FINANCE TRANSACTION SPLITS DELETE ERROR:', err);
     res.status(500).json({ error: 'Failed to delete splits' });
+  }
+});
+
+router.patch('/bank-transactions/:id/splits/:splitId', async (req: Request, res: Response) => {
+  try {
+    const { amount, description, categoryId, siteId } = req.body as {
+      amount?: number;
+      description?: string | null;
+      categoryId?: string;
+      siteId?: string | null;
+    };
+    const updated = await bankStatementService.updateTransactionSplit(req.params.id, req.params.splitId, {
+      ...(amount !== undefined ? { amount: Number(amount) } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(categoryId !== undefined ? { categoryId } : {}),
+      ...(siteId !== undefined ? { siteId } : {}),
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error('FINANCE TRANSACTION SPLIT PATCH ERROR:', err);
+    const msg = err instanceof Error ? err.message : 'Failed to update split';
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.delete('/bank-transactions/:id/splits/:splitId', async (req: Request, res: Response) => {
+  try {
+    await bankStatementService.deleteTransactionSplit(req.params.id, req.params.splitId);
+    res.status(204).send();
+  } catch (err) {
+    console.error('FINANCE TRANSACTION SPLIT DELETE ERROR:', err);
+    const msg = err instanceof Error ? err.message : 'Failed to delete split';
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.post('/bank-transactions/:transactionId/bill', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const file = req.file;
+    if (!file?.buffer) return res.status(400).json({ error: 'No file uploaded' });
+    const splitId =
+      typeof req.body.splitId === 'string' && req.body.splitId.trim() ? req.body.splitId.trim() : undefined;
+    const result = await uploadBankTransactionBill({
+      transactionId: req.params.transactionId,
+      splitId,
+      buffer: file.buffer,
+      originalName: file.originalname || 'file',
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    console.error('FINANCE BANK TX BILL UPLOAD ERROR:', err);
+    const msg = err instanceof Error ? err.message : 'Upload failed';
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.delete('/bank-transactions/:transactionId/bill', async (req: Request, res: Response) => {
+  try {
+    const splitId =
+      typeof req.query.splitId === 'string' && req.query.splitId.trim() ? req.query.splitId.trim() : undefined;
+    await deleteBankTransactionBill(req.params.transactionId, splitId);
+    res.status(204).send();
+  } catch (err) {
+    console.error('FINANCE BANK TX BILL DELETE ERROR:', err);
+    const msg = err instanceof Error ? err.message : 'Delete failed';
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.get('/bank-transaction-bills/:name', async (req: Request, res: Response) => {
+  try {
+    const raw = req.params.name.replace(/[^a-f0-9._-]/gi, '');
+    const base = resolve(BANK_BILL_DIR);
+    const full = resolve(base, raw);
+    if (!full.startsWith(base) || !existsSync(full)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const buf = readFileSync(full);
+    res.setHeader('Content-Type', contentTypeForBankBillFile(raw));
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    console.error('FINANCE BANK TX BILL FILE ERROR:', err);
+    res.status(500).json({ error: 'Failed to read file' });
   }
 });
 
@@ -1143,36 +1552,303 @@ router.post('/sales-bills', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Sales customers (read-only for linking / prefilling finance clients) ─
+router.get('/sales-customers', async (_req: Request, res: Response) => {
+  try {
+    const customers = await prisma.customer.findMany({
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        company: true,
+        email: true,
+        phone: true,
+        address: true,
+        city: true,
+        state: true,
+        pincode: true,
+        gstin: true,
+      },
+    });
+    res.json(customers);
+  } catch (err) {
+    console.error('FINANCE SALES CUSTOMERS ERROR:', err);
+    res.status(500).json({ error: 'Failed to fetch sales customers' });
+  }
+});
+
+router.post('/invoices/annexure-upload', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const file = req.file;
+    if (!file?.buffer) return res.status(400).json({ error: 'No file uploaded' });
+    if (!existsSync(INVOICE_ANNEXURE_DIR)) mkdirSync(INVOICE_ANNEXURE_DIR, { recursive: true });
+    const safe = (file.originalname || 'file').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const name = `${randomBytes(16).toString('hex')}-${safe}`;
+    writeFileSync(join(INVOICE_ANNEXURE_DIR, name), file.buffer);
+    res.json({
+      fileUrl: `/api/finance/invoices/annexure-file/${name}`,
+      fileName: file.originalname || safe,
+    });
+  } catch (err) {
+    console.error('FINANCE INVOICE ANNEXURE UPLOAD ERROR:', err);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
+});
+
+router.get('/invoices/annexure-file/:name', async (req: Request, res: Response) => {
+  try {
+    const raw = req.params.name.replace(/[^a-f0-9._-]/gi, '');
+    const base = resolve(INVOICE_ANNEXURE_DIR);
+    const full = resolve(base, raw);
+    if (!full.startsWith(base) || !existsSync(full)) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const buf = readFileSync(full);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(Buffer.from(buf));
+  } catch (err) {
+    console.error('FINANCE INVOICE ANNEXURE GET ERROR:', err);
+    res.status(500).json({ error: 'Failed to read file' });
+  }
+});
+
+// ─── Invoice templates (no-code SPGS layout) ───────────────────────────────
+router.get('/invoice-templates', async (_req: Request, res: Response) => {
+  try {
+    await ensureDefaultInvoiceTemplates();
+    const list = await prisma.invoiceTemplate.findMany();
+    const order = new Map(SUBTYPE_ORDER.map((t, i) => [t, i]));
+    list.sort((a, b) => (order.get(a.subtype) ?? 99) - (order.get(b.subtype) ?? 99));
+    res.json(list);
+  } catch (err) {
+    console.error('FINANCE INVOICE TEMPLATES LIST ERROR:', err);
+    const msg = err instanceof Error ? err.message : String(err);
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({
+      error: 'Failed to list invoice templates',
+      ...(isDev && msg ? { details: msg } : {}),
+    });
+  }
+});
+
+router.post('/invoice-templates/preview-html', async (req: Request, res: Response) => {
+  try {
+    const raw = req.body as { config?: unknown };
+    const cfg = mergeInvoiceTemplateConfig(raw?.config);
+    const html = buildSpgsInvoiceHtmlDocument({
+      data: buildSampleSpgsPdfInputForPreview(cfg),
+      branding: getInvoiceBranding(),
+      logoDataUrl: resolveInvoiceLogoDataUrl(),
+      templateConfig: cfg,
+    });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    console.error('FINANCE INVOICE TEMPLATE PREVIEW POST ERROR:', err);
+    res.status(500).json({ error: 'Failed to render preview' });
+  }
+});
+
+router.get('/invoice-templates/:id/preview-html', async (req: Request, res: Response) => {
+  try {
+    const t = await prisma.invoiceTemplate.findUnique({ where: { id: req.params.id } });
+    if (!t) return res.status(404).json({ error: 'Template not found' });
+    const cfg = mergeInvoiceTemplateConfig(t.config);
+    const html = buildSpgsInvoiceHtmlDocument({
+      data: buildSampleSpgsPdfInputForPreview(cfg),
+      branding: getInvoiceBranding(),
+      logoDataUrl: resolveInvoiceLogoDataUrl(),
+      templateConfig: cfg,
+    });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    console.error('FINANCE INVOICE TEMPLATE PREVIEW ERROR:', err);
+    res.status(500).json({ error: 'Failed to render preview' });
+  }
+});
+
+router.get('/invoice-templates/:id', async (req: Request, res: Response) => {
+  try {
+    const t = await prisma.invoiceTemplate.findUnique({ where: { id: req.params.id } });
+    if (!t) return res.status(404).json({ error: 'Template not found' });
+    res.json(t);
+  } catch (err) {
+    console.error('FINANCE INVOICE TEMPLATE GET ERROR:', err);
+    res.status(500).json({ error: 'Failed to fetch invoice template' });
+  }
+});
+
+router.post('/invoice-templates', async (_req: Request, res: Response) => {
+  res.status(400).json({
+    error: 'Invoice layouts are fixed per invoice type (SPGS, Product, Service, Proforma). Edit them in this list.',
+  });
+});
+
+router.patch('/invoice-templates/:id', async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { name?: string; config?: unknown };
+    const cur = await prisma.invoiceTemplate.findUnique({ where: { id: req.params.id } });
+    if (!cur) return res.status(404).json({ error: 'Template not found' });
+    const mergedConfig =
+      body.config !== undefined
+        ? mergeInvoiceTemplateConfig(body.config)
+        : mergeInvoiceTemplateConfig(cur.config);
+    const row = await prisma.invoiceTemplate.update({
+      where: { id: req.params.id },
+      data: {
+        ...(body.name?.trim() ? { name: body.name.trim() } : {}),
+        config: mergedConfig as unknown as Prisma.InputJsonValue,
+      },
+    });
+    res.json(row);
+  } catch (err) {
+    console.error('FINANCE INVOICE TEMPLATE PATCH ERROR:', err);
+    res.status(500).json({ error: 'Failed to update invoice template' });
+  }
+});
+
+router.delete('/invoice-templates/:id', async (_req: Request, res: Response) => {
+  res.status(400).json({
+    error: 'Invoice layouts cannot be deleted. Each invoice type has one layout; clear its fields in the editor if needed.',
+  });
+});
+
 // ─── Invoices ──────────────────────────────────────────────────────────────
+router.get('/invoices/next-number', async (req: Request, res: Response) => {
+  try {
+    const raw = req.query.mainKind as string | undefined;
+    const validMain: InvoiceMainKind[] = ['TAX_INVOICE', 'PROFORMA_INVOICE', 'QUOTATION', 'EWAY_BILL'];
+    if (!raw || !validMain.includes(raw as InvoiceMainKind)) {
+      return res.status(400).json({ error: 'Query mainKind is required (TAX_INVOICE, PROFORMA_INVOICE, QUOTATION, EWAY_BILL)' });
+    }
+    const next = await peekNextInvoiceNumber(prisma, raw as InvoiceMainKind);
+    res.json(next);
+  } catch (err) {
+    console.error('FINANCE INVOICE NEXT NUMBER ERROR:', err);
+    res.status(500).json({ error: 'Failed to read next number' });
+  }
+});
+
 router.get('/invoices/:id/pdf', async (req: Request, res: Response) => {
   try {
     const invoice = await prisma.invoice.findUnique({
       where: { id: req.params.id },
-      include: { client: true },
+      include: { client: true, template: true },
     });
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
-    const items = (invoice.items as { name?: string; description?: string; hsn?: string; qty?: number; rate?: number; amount?: number }[]).map((i) => ({
-      name: i.name ?? 'Item',
-      description: i.description,
-      hsn: i.hsn,
-      qty: Number(i.qty) || 1,
-      rate: Number(i.rate) || 0,
-      amount: Number(i.amount) || Number(i.qty || 1) * (Number(i.rate) || 0),
-    }));
+    const raw = invoice.items as unknown;
+    const isV2 =
+      raw &&
+      typeof raw === 'object' &&
+      !Array.isArray(raw) &&
+      (raw as { version?: number }).version === 2;
+
+    if (isV2 && (raw as { billingMode?: string }).billingMode === 'SPGS') {
+      const payload = raw as {
+        spgs?: {
+          systemSizeKw: number;
+          panelWattage: number;
+          panelSerials: string[];
+          inverterSerials?: string[];
+          panelMake?: string;
+          inverterMake?: string;
+          siteName?: string;
+          siteAddress?: string;
+          gstMode: 'blended' | 'split' | 'epc';
+          computed: import('../services/invoice-spgs.service.js').SpgsComputed;
+          annexures?: { label: string; fileName?: string }[];
+        };
+      };
+      const sp = payload.spgs;
+      if (!sp?.computed) return res.status(500).json({ error: 'Invalid SPGS invoice payload' });
+
+      const invDate = invoicePdfDateDisplay(invoice);
+      const templateConfig = mergeTemplateConfigWithMainKind(invoice.template?.config ?? {}, invoice.mainKind);
+      const pdfBytes = await generateSpgsTurnkeyPdf(
+        {
+          invoiceNo: invoiceDocNo(invoice),
+          date: invDate,
+          dueDate: invDate,
+          clientName: invoice.client.name,
+          companyName: (invoice.client as { companyName?: string | null }).companyName ?? undefined,
+          address: invoice.client.address ?? undefined,
+          gstin: invoice.client.gstin ?? undefined,
+          contact: invoice.client.contact ?? undefined,
+          placeOfSupply: placeOfSupplyFromGstin(invoice.client.gstin),
+          transport: 'Hand Delivery',
+          siteName: sp.siteName,
+          siteAddress: sp.siteAddress,
+          systemSizeKw: sp.systemSizeKw,
+          panelWattage: sp.panelWattage,
+          panelSerials: Array.isArray(sp.panelSerials) ? sp.panelSerials : [],
+          inverterSerials: Array.isArray(sp.inverterSerials) ? sp.inverterSerials : undefined,
+          panelMake: typeof sp.panelMake === 'string' && sp.panelMake.trim() ? sp.panelMake.trim() : undefined,
+          inverterMake: typeof sp.inverterMake === 'string' && sp.inverterMake.trim() ? sp.inverterMake.trim() : undefined,
+          computed: sp.computed,
+          gstMode: sp.gstMode,
+          annexures: sp.annexures ?? [],
+        },
+        { templateConfig }
+      );
+      res.setHeader('Content-Type', 'application/pdf');
+      const safeName = invoiceDocNo(invoice).replace(/[^\w.-]+/g, '_');
+      res.setHeader('Content-Disposition', `inline; filename="invoice-${safeName}.pdf"`);
+      res.send(Buffer.from(pdfBytes));
+      return;
+    }
+
+    let items: { name: string; description?: string; hsn?: string; qty: number; rate: number; amount: number }[];
+    /** Set for v2 NON_SPGS: sum of per-line GST (PDF uses aggregate line, not flat 18%). */
+    let gstFromLineSum: number | undefined;
+    if (isV2 && (raw as { billingMode?: string }).billingMode === 'NON_SPGS') {
+      const ns = (raw as { nonSpgs?: { items?: unknown[] } }).nonSpgs;
+      const arr = Array.isArray(ns?.items) ? ns!.items! : [];
+      gstFromLineSum = arr.reduce((s: number, i: unknown) => {
+        const row = i as Record<string, unknown>;
+        return s + (Number(row.gstAmount) || 0);
+      }, 0);
+      items = arr.map((i: unknown) => {
+        const row = i as Record<string, unknown>;
+        return {
+        name: String(row.name ?? 'Item'),
+        description: row.description ? String(row.description) : undefined,
+        hsn: row.hsn ? String(row.hsn) : undefined,
+        qty: Number(row.qty) || 1,
+        rate: Number(row.rate) || 0,
+        amount: Number(row.amount) || 0,
+      };
+      });
+    } else if (Array.isArray(raw)) {
+      items = (raw as { name?: string; description?: string; hsn?: string; qty?: number; rate?: number; amount?: number }[]).map((i) => ({
+        name: i.name ?? 'Item',
+        description: i.description,
+        hsn: i.hsn,
+        qty: Number(i.qty) || 1,
+        rate: Number(i.rate) || 0,
+        amount: Number(i.amount) || Number(i.qty || 1) * (Number(i.rate) || 0),
+      }));
+    } else {
+      return res.status(500).json({ error: 'Unsupported invoice items format' });
+    }
 
     const subtotal = items.reduce((s, i) => s + i.amount, 0);
     const gstRate = 18;
-    const gstAmount = Math.round((subtotal * gstRate) / 100);
+    const gstAggregateOnly = gstFromLineSum !== undefined;
+    const gstAmount =
+      gstFromLineSum !== undefined ? gstFromLineSum : Math.round((subtotal * gstRate) / 100);
     const cgst = Math.round(gstAmount / 2);
     const sgst = gstAmount - cgst;
     const totalAmount = invoice.totalAmount || subtotal + gstAmount;
 
     const { generateInvoicePdf } = await import('../services/invoice-pdf.service.js');
+    const docDateStr = invoicePdfDateDisplay(invoice);
     const pdfData = {
-      invoiceNo: `INV-${invoice.id.slice(-8).toUpperCase()}`,
-      type: invoice.type,
-      date: new Date(invoice.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      invoiceNo: invoiceDocNo(invoice),
+      type: `${invoice.mainKind} · ${invoice.subtype}`,
+      documentTitle: documentTitleForMainKind(invoice.mainKind),
+      date: docDateStr,
       client: {
         name: invoice.client.name,
         address: invoice.client.address ?? undefined,
@@ -1185,11 +1861,13 @@ router.get('/invoices/:id/pdf', async (req: Request, res: Response) => {
       sgst,
       gstAmount,
       totalAmount: invoice.totalAmount || totalAmount,
+      gstAggregateOnly,
     };
 
     const pdfBytes = await generateInvoicePdf(pdfData);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="invoice-${pdfData.invoiceNo}.pdf"`);
+    const safeName = String(pdfData.invoiceNo).replace(/[^\w.-]+/g, '_');
+    res.setHeader('Content-Disposition', `inline; filename="invoice-${safeName}.pdf"`);
     res.send(Buffer.from(pdfBytes));
   } catch (err) {
     console.error('FINANCE INVOICE PDF ERROR:', err);
@@ -1213,37 +1891,255 @@ router.get('/invoices/:id', async (req: Request, res: Response) => {
 
 router.get('/invoices', async (req: Request, res: Response) => {
   try {
-    const type = req.query.type as string | undefined;
-    const invoices = await prisma.invoice.findMany({
-      where: type ? { type: type as 'SPGS' | 'PRODUCT' | 'SERVICE' | 'PROFORMA' } : undefined,
-      include: { client: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(invoices);
+    const mainKind = req.query.mainKind as string | undefined;
+    const subtype = req.query.subtype as string | undefined;
+    const trashed = req.query.trashed === '1' || req.query.trashed === 'true';
+    const filterWhere: Prisma.InvoiceWhereInput = {
+      ...(mainKind ? { mainKind: mainKind as InvoiceMainKind } : {}),
+      ...(subtype ? { subtype: subtype as InvoiceSubtype } : {}),
+    };
+    try {
+      const invoices = await prisma.invoice.findMany({
+        where: {
+          ...filterWhere,
+          ...(trashed ? { deletedAt: { not: null } } : { deletedAt: null }),
+        },
+        include: { client: true },
+        orderBy: trashed ? { deletedAt: 'desc' } : { createdAt: 'desc' },
+      });
+      return res.json(invoices);
+    } catch (inner) {
+      if (isMissingInvoiceDeletedAtColumn(inner)) {
+        if (trashed) return res.json([]);
+        const invoices = await prisma.invoice.findMany({
+          where: filterWhere,
+          include: { client: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        return res.json(invoices);
+      }
+      throw inner;
+    }
   } catch (err) {
     console.error('FINANCE INVOICES ERROR:', err);
-    res.status(500).json({ error: 'Failed to fetch invoices' });
+    const msg = err instanceof Error ? err.message : String(err);
+    const isDev = process.env.NODE_ENV !== 'production';
+    res.status(500).json({
+      error: 'Failed to fetch invoices',
+      ...(isDev && msg ? { details: msg } : {}),
+    });
   }
 });
 
 router.post('/invoices', async (req: Request, res: Response) => {
   try {
-    const { type, clientId, quotationId, items, totalAmount, fileUrl } = req.body;
+    const {
+      mainKind: rawMainKind,
+      subtype: rawSubtype,
+      clientId,
+      quotationId,
+      items,
+      totalAmount,
+      fileUrl,
+      spgsPayload,
+      lineItems,
+      invoiceNumber: rawInvoiceNumber,
+      invoiceDate: rawInvoiceDate,
+    } = req.body;
+
+    const validMain: InvoiceMainKind[] = ['TAX_INVOICE', 'PROFORMA_INVOICE', 'QUOTATION', 'EWAY_BILL'];
+    const validSub: InvoiceSubtype[] = ['SPGS', 'SERVICE', 'PRODUCT'];
+    if (!rawMainKind || !validMain.includes(rawMainKind as InvoiceMainKind)) {
+      return res.status(400).json({ error: 'Valid mainKind is required (TAX_INVOICE, PROFORMA_INVOICE, QUOTATION, EWAY_BILL)' });
+    }
+    if (!rawSubtype || !validSub.includes(rawSubtype as InvoiceSubtype)) {
+      return res.status(400).json({ error: 'Valid subtype is required (SPGS, SERVICE, PRODUCT)' });
+    }
+    const mainKind = rawMainKind as InvoiceMainKind;
+    const subtype = rawSubtype as InvoiceSubtype;
+
+    if (subtype === 'SPGS' && (!spgsPayload || typeof spgsPayload !== 'object')) {
+      return res.status(400).json({ error: 'spgsPayload is required for SPGS subtype' });
+    }
+    if ((subtype === 'PRODUCT' || subtype === 'SERVICE') && (!Array.isArray(lineItems) || lineItems.length === 0)) {
+      return res.status(400).json({ error: 'lineItems are required for Product/Service subtype' });
+    }
+
+    let invoiceNumber = normalizeInvoiceNumber(rawInvoiceNumber);
+    if (rawInvoiceNumber !== undefined && rawInvoiceNumber !== null && String(rawInvoiceNumber).trim() !== '' && invoiceNumber === null) {
+      return res.status(400).json({ error: 'Invoice number must be digits only (e.g. 1, 2, 3)' });
+    }
+    await ensureFinanceInvoiceSequences(prisma);
+    if (invoiceNumber === null) {
+      invoiceNumber = await allocateNextInvoiceNumber(prisma, mainKind);
+    }
+
+    const invoiceDateStr =
+      typeof rawInvoiceDate === 'string' && rawInvoiceDate.trim() ? rawInvoiceDate.trim() : undefined;
+    const invoiceDateParsed = invoiceDateStr ? parseInvoiceDateBody(invoiceDateStr) : undefined;
+    const documentMeta: InvoiceDocumentMeta = {
+      ...(invoiceNumber ? { invoiceNumber } : {}),
+      ...(invoiceDateStr ? { invoiceDate: invoiceDateStr } : {}),
+    };
+
+    let itemsJson: unknown = items ?? [];
+    let total = Number(totalAmount) || 0;
+
+    if (subtype === 'SPGS' && spgsPayload && typeof spgsPayload === 'object') {
+      const p = spgsPayload as SpgsInput;
+      const computed = computeSpgsTotals(p);
+      itemsJson = {
+        version: 2,
+        documentMeta,
+        billingMode: 'SPGS',
+        spgs: {
+          ...p,
+          annexures: Array.isArray((spgsPayload as { annexures?: unknown }).annexures)
+            ? (spgsPayload as { annexures: { label: string; fileName?: string; fileUrl?: string }[] }).annexures
+            : [],
+          computed,
+        },
+      };
+      total = computed.totalInclGst;
+    } else if ((subtype === 'PRODUCT' || subtype === 'SERVICE') && Array.isArray(lineItems)) {
+      const sub = lineItems.reduce((s: number, row: { amount?: number }) => s + (Number(row.amount) || 0), 0);
+      const gst = lineItems.reduce((s: number, row: { gstAmount?: number }) => s + (Number(row.gstAmount) || 0), 0);
+      itemsJson = {
+        version: 2,
+        documentMeta,
+        billingMode: 'NON_SPGS',
+        nonSpgs: { items: lineItems },
+      };
+      total = Number(totalAmount) || sub + gst;
+    } else if (Array.isArray(items)) {
+      const sub = (items as { amount?: number }[]).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+      const g = Math.round((sub * 18) / 100);
+      total = Number(totalAmount) || sub + g;
+    }
+
+    const templateId = await resolveTemplateIdForSubtype(subtype);
+
     const invoice = await prisma.invoice.create({
       data: {
-        type,
+        mainKind,
+        subtype,
         clientId,
         quotationId: quotationId || null,
-        items: items ?? [],
-        totalAmount: Number(totalAmount),
+        items: itemsJson as object,
+        totalAmount: total,
         fileUrl: fileUrl || null,
+        invoiceNumber,
+        invoiceDate: invoiceDateParsed ?? null,
+        templateId: templateId ?? undefined,
       },
       include: { client: true },
     });
     res.status(201).json(invoice);
   } catch (err) {
     console.error('FINANCE INVOICE CREATE ERROR:', err);
-    res.status(500).json({ error: 'Failed to create invoice' });
+    const message = err instanceof Error ? err.message : 'Failed to create invoice';
+    res.status(500).json({ error: 'Failed to create invoice', details: message });
+  }
+});
+
+router.post('/invoices/:id/convert', async (req: Request, res: Response) => {
+  try {
+    const { targetMainKind: rawTarget } = req.body as { targetMainKind?: string };
+    const validMain: InvoiceMainKind[] = ['TAX_INVOICE', 'PROFORMA_INVOICE', 'QUOTATION', 'EWAY_BILL'];
+    if (!rawTarget || !validMain.includes(rawTarget as InvoiceMainKind)) {
+      return res.status(400).json({ error: 'targetMainKind is required' });
+    }
+    const targetMainKind = rawTarget as InvoiceMainKind;
+    const source = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+    if (!source) return res.status(404).json({ error: 'Invoice not found' });
+    if (source.deletedAt) return res.status(400).json({ error: 'Cannot convert a deleted invoice' });
+    if (!canConvertInvoice(source.mainKind, targetMainKind)) {
+      return res.status(400).json({ error: 'This conversion is not allowed' });
+    }
+    await ensureFinanceInvoiceSequences(prisma);
+    const nextNo = await allocateNextInvoiceNumber(prisma, targetMainKind);
+    const templateId = await resolveTemplateIdForSubtype(source.subtype);
+    let nextItems: object = source.items as object;
+    const rawItems = source.items as { documentMeta?: { invoiceNumber?: string; invoiceDate?: string } } | null;
+    if (rawItems && typeof rawItems === 'object' && !Array.isArray(rawItems)) {
+      const dm = rawItems.documentMeta && typeof rawItems.documentMeta === 'object' ? rawItems.documentMeta : {};
+      nextItems = {
+        ...rawItems,
+        documentMeta: { ...dm, invoiceNumber: nextNo },
+      };
+    }
+    const created = await prisma.invoice.create({
+      data: {
+        mainKind: targetMainKind,
+        subtype: source.subtype,
+        clientId: source.clientId,
+        quotationId: source.quotationId,
+        items: nextItems,
+        totalAmount: source.totalAmount,
+        fileUrl: source.fileUrl,
+        invoiceNumber: nextNo,
+        invoiceDate: source.invoiceDate,
+        templateId: templateId ?? undefined,
+        convertedFromId: source.id,
+      },
+      include: { client: true },
+    });
+    res.status(201).json(created);
+  } catch (err) {
+    console.error('FINANCE INVOICE CONVERT ERROR:', err);
+    res.status(500).json({ error: 'Failed to convert invoice' });
+  }
+});
+
+router.delete('/invoices/:id/permanent', async (req: Request, res: Response) => {
+  try {
+    const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (!invoice.deletedAt) {
+      return res.status(400).json({ error: 'Move to recycle bin before deleting permanently' });
+    }
+    await prisma.invoice.delete({ where: { id: req.params.id } });
+    res.status(204).send();
+  } catch (err) {
+    console.error('FINANCE INVOICE PURGE ERROR:', err);
+    res.status(500).json({ error: 'Failed to delete invoice permanently' });
+  }
+});
+
+router.post('/invoices/:id/restore', async (req: Request, res: Response) => {
+  try {
+    const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (!invoice.deletedAt) {
+      return res.status(400).json({ error: 'Invoice is not in recycle bin' });
+    }
+    const restored = await prisma.invoice.update({
+      where: { id: req.params.id },
+      data: { deletedAt: null },
+      include: { client: true },
+    });
+    res.json(restored);
+  } catch (err) {
+    console.error('FINANCE INVOICE RESTORE ERROR:', err);
+    res.status(500).json({ error: 'Failed to restore invoice' });
+  }
+});
+
+router.delete('/invoices/:id', async (req: Request, res: Response) => {
+  try {
+    const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (invoice.deletedAt) {
+      return res.status(400).json({ error: 'Invoice is already in recycle bin' });
+    }
+    await prisma.invoice.update({
+      where: { id: req.params.id },
+      data: { deletedAt: new Date() },
+    });
+    res.status(204).send();
+  } catch (err) {
+    console.error('FINANCE INVOICE SOFT DELETE ERROR:', err);
+    res.status(500).json({ error: 'Failed to move invoice to recycle bin' });
   }
 });
 
