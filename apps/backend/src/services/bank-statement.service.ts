@@ -607,6 +607,131 @@ export async function deleteTransactionSplit(transactionId: string, splitId: str
   await prisma.transactionSplit.delete({ where: { id: splitId } });
 }
 
+/**
+ * Reassign sort_order 0..n-1 for all active rows in an upload so list order follows transaction date.
+ * @param dateDir 'asc' = oldest first, 'desc' = newest first (matches UI "Sort by date")
+ */
+export async function reorderUploadByTransactionDate(uploadId: string, dateDir: 'asc' | 'desc'): Promise<void> {
+  const rows = await prisma.bankTransaction.findMany({
+    where: { uploadId, deletedAt: null },
+    select: { id: true, transactionDate: true },
+  });
+  const order = dateDir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    const d = a.transactionDate.getTime() - b.transactionDate.getTime();
+    if (d !== 0) return order * d;
+    return a.id.localeCompare(b.id);
+  });
+  await prisma.$transaction(
+    rows.map((r, i) =>
+      prisma.$executeRaw(
+        Prisma.sql`UPDATE "finance_bank_transactions" SET "sort_order" = ${i} WHERE "id" = ${r.id} AND "uploadId" = ${uploadId}`
+      )
+    )
+  );
+}
+
+export interface CreateManualTransactionInput {
+  uploadId: string;
+  transactionDate: Date;
+  partyName?: string | null;
+  description?: string | null;
+  amount: number;
+  type: FinanceTransactionType;
+  categoryId?: string | null;
+  siteId?: string | null;
+  /** Match UI sort so new row appears in correct chronological position */
+  listSortDate: 'asc' | 'desc';
+  splits?: { categoryId: string; siteId?: string | null; amount: number; description?: string | null }[];
+}
+
+/**
+ * Manually add a bank transaction to an existing upload; reorders rows by date within the upload.
+ */
+export async function createManualTransaction(input: CreateManualTransactionInput) {
+  const {
+    uploadId,
+    transactionDate,
+    partyName,
+    description,
+    amount,
+    type,
+    categoryId,
+    siteId,
+    listSortDate,
+    splits,
+  } = input;
+
+  const upload = await prisma.bankStatementUpload.findUnique({ where: { id: uploadId }, select: { id: true } });
+  if (!upload) throw new Error('Upload not found');
+
+  const abs = Math.abs(Number(amount));
+  if (!Number.isFinite(abs) || abs <= 0) throw new Error('Amount must be a positive number');
+
+  const useSplits = Array.isArray(splits) && splits.length >= 2;
+  if (useSplits) {
+    const totalSplit = splits!.reduce((s, sp) => s + Number(sp.amount), 0);
+    if (Math.abs(totalSplit - abs) > AMOUNT_EPS) {
+      throw new Error('Split amounts must sum to the transaction amount');
+    }
+  }
+
+  const row = await prisma.bankTransaction.create({
+    data: {
+      uploadId,
+      transactionDate,
+      valueDate: null,
+      referenceNo: null,
+      rawDescription: null,
+      description: description?.trim() || null,
+      partyName: partyName?.trim() || null,
+      amount: abs,
+      type,
+      categoryId: useSplits ? null : categoryId ?? null,
+      siteId: useSplits ? null : siteId ?? null,
+      isSplit: false,
+      manualOverride: true,
+      processed: true,
+    },
+  });
+
+  if (useSplits) {
+    await prisma.$transaction(
+      splits!.map((sp) =>
+        prisma.transactionSplit.create({
+          data: {
+            transactionId: row.id,
+            categoryId: sp.categoryId,
+            siteId: sp.siteId ?? null,
+            amount: Number(sp.amount),
+            description: sp.description?.trim() || null,
+          },
+        })
+      )
+    );
+    await prisma.bankTransaction.update({
+      where: { id: row.id },
+      data: { isSplit: true, categoryId: null, siteId: null },
+    });
+  }
+
+  await reorderUploadByTransactionDate(uploadId, listSortDate);
+
+  return prisma.bankTransaction.findFirst({
+    where: { id: row.id },
+    include: {
+      site: true,
+      category: true,
+      purchaseBill: true,
+      salesBill: true,
+      splits: {
+        include: { category: true, site: true, purchaseBill: true, salesBill: true },
+        orderBy: { id: 'asc' },
+      },
+    },
+  });
+}
+
 export async function reorderTransactions(uploadId: string, orderedIds: string[]): Promise<void> {
   if (orderedIds.length === 0) return;
   const rows = await prisma.bankTransaction.findMany({
@@ -677,6 +802,8 @@ export const bankStatementService = {
   extractPartyName,
   uploadAndProcess,
   getTransactions,
+  createManualTransaction,
+  reorderUploadByTransactionDate,
   updateClassification,
   bulkUpdate,
   reorderTransactions,

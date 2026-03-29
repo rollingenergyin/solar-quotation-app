@@ -175,9 +175,10 @@ async function ensureDefaultInvoiceTemplates(): Promise<void> {
     }
     const target = bySubtype ?? bySlug;
     if (target) {
+      // Do not overwrite config — user edits live in DB; resetting here wiped layout on every GET /invoice-templates.
       await prisma.invoiceTemplate.update({
         where: { id: target.id },
-        data: { name, slug, subtype: t, config: json },
+        data: { name, slug, subtype: t },
       });
     } else {
       await prisma.invoiceTemplate.create({
@@ -769,6 +770,66 @@ router.get('/bank-transactions', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('FINANCE BANK TRANSACTIONS LIST ERROR:', err);
     res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
+});
+
+router.post('/bank-transactions', async (req: Request, res: Response) => {
+  try {
+    const {
+      uploadId,
+      transactionDate,
+      partyName,
+      description,
+      amount,
+      type,
+      categoryId,
+      siteId,
+      listSortDate,
+      splits,
+    } = req.body as {
+      uploadId?: string;
+      transactionDate?: string;
+      partyName?: string | null;
+      description?: string | null;
+      amount?: number;
+      type?: 'INCOME' | 'EXPENSE';
+      categoryId?: string | null;
+      siteId?: string | null;
+      listSortDate?: 'asc' | 'desc';
+      splits?: { categoryId: string; siteId?: string | null; amount: number; description?: string | null }[];
+    };
+    if (!uploadId || !transactionDate || !type) {
+      return res.status(400).json({ error: 'uploadId, transactionDate, and type are required' });
+    }
+    if (type !== 'INCOME' && type !== 'EXPENSE') {
+      return res.status(400).json({ error: 'type must be INCOME or EXPENSE' });
+    }
+    const amt = Number(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return res.status(400).json({ error: 'amount must be a positive number' });
+    }
+    const d = new Date(transactionDate);
+    if (isNaN(d.getTime())) {
+      return res.status(400).json({ error: 'Invalid transactionDate' });
+    }
+    const txn = await bankStatementService.createManualTransaction({
+      uploadId,
+      transactionDate: d,
+      partyName: partyName ?? null,
+      description: description ?? null,
+      amount: amt,
+      type,
+      categoryId: categoryId ?? null,
+      siteId: siteId ?? null,
+      listSortDate: listSortDate === 'asc' ? 'asc' : 'desc',
+      splits: Array.isArray(splits) && splits.length >= 2 ? splits : undefined,
+    });
+    res.status(201).json(txn);
+  } catch (err) {
+    console.error('FINANCE BANK TRANSACTION CREATE ERROR:', err);
+    const msg = err instanceof Error ? err.message : 'Failed to create transaction';
+    if (msg.includes('not found')) return res.status(404).json({ error: msg });
+    res.status(400).json({ error: msg });
   }
 });
 
@@ -1765,7 +1826,11 @@ router.get('/invoices/:id/pdf', async (req: Request, res: Response) => {
       if (!sp?.computed) return res.status(500).json({ error: 'Invalid SPGS invoice payload' });
 
       const invDate = invoicePdfDateDisplay(invoice);
-      const templateConfig = mergeTemplateConfigWithMainKind(invoice.template?.config ?? {}, invoice.mainKind);
+      const baseConfig =
+        invoice.template?.config ??
+        (await prisma.invoiceTemplate.findUnique({ where: { subtype: invoice.subtype } }))?.config ??
+        {};
+      const templateConfig = mergeTemplateConfigWithMainKind(baseConfig, invoice.mainKind);
       const pdfBytes = await generateSpgsTurnkeyPdf(
         {
           invoiceNo: invoiceDocNo(invoice),

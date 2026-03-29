@@ -1,20 +1,16 @@
 'use client';
 
 import { Fragment, useState, useCallback, useEffect, useRef } from 'react';
-import {
-  DndContext,
-  PointerSensor,
-  closestCenter,
-  type DragEndEvent,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import type { DraggableAttributes } from '@dnd-kit/core';
 import { api } from '@/lib/api';
 import BillAttachmentCell from './BillAttachmentCell';
 import type { LinkedFinanceBill } from './BillAttachmentCell';
+
+function arrayMove<T>(arr: T[], from: number, to: number): T[] {
+  const next = [...arr];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
 
 const fmt = (n: number) => '₹' + n.toLocaleString('en-IN');
 const fmtDate = (s: string) =>
@@ -78,35 +74,6 @@ function sumSplitsOk(parentAmount: number, splits: { amount: number }[]): boolea
   return Math.abs(s - parentAmount) < 0.02;
 }
 
-function SortableRow({
-  id,
-  disabled,
-  children,
-}: {
-  id: string;
-  disabled?: boolean;
-  children: (drag: {
-    attributes: DraggableAttributes;
-    listeners: Record<string, unknown> | undefined;
-  }) => React.ReactNode;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-    disabled: !!disabled,
-  });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.55 : 1,
-    zIndex: isDragging ? 1 : undefined,
-  };
-  return (
-    <tr ref={setNodeRef} style={style} className="hover:bg-gray-50">
-      {children({ attributes, listeners })}
-    </tr>
-  );
-}
-
 export default function BankTransactionsTable({
   uploadId,
   transactions,
@@ -119,10 +86,6 @@ export default function BankTransactionsTable({
   onToggleSelect,
   disableDrag = false,
 }: Props) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
-  );
-
   const [inline, setInline] = useState<{ id: string; field: 'partyName' | 'description' } | null>(null);
   const [draft, setDraft] = useState('');
   const [splitErr, setSplitErr] = useState<Record<string, string>>({});
@@ -168,15 +131,12 @@ export default function BankTransactionsTable({
     setDraft('');
   };
 
-  const onDragEnd = async (e: DragEndEvent) => {
+  const moveRow = async (rowIndex: number, direction: -1 | 1) => {
     if (disableDrag) return;
-    const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const oldIndex = transactions.findIndex((t) => t.id === active.id);
-    const newIndex = transactions.findIndex((t) => t.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
+    const j = rowIndex + direction;
+    if (j < 0 || j >= transactions.length) return;
     const prevSnap = transactions;
-    const next = arrayMove(transactions, oldIndex, newIndex);
+    const next = arrayMove(transactions, rowIndex, j);
     setTransactions(next);
     try {
       await api('/finance/bank-transactions/reorder', {
@@ -364,16 +324,17 @@ export default function BankTransactionsTable({
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="px-1 py-2 w-8" aria-label={disableDrag ? undefined : 'Reorder'} />
-              <th className="px-2 py-3 w-10">
-                <span className="sr-only">Select</span>
-              </th>
-              <th className="px-3 py-3 text-left font-semibold text-gray-700">Date</th>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50 border-b">
+          <tr>
+            <th className="px-0.5 py-2 w-9 text-center text-xs font-semibold text-gray-600" title="Move row">
+              Order
+            </th>
+            <th className="px-2 py-3 w-10">
+              <span className="sr-only">Select</span>
+            </th>
+            <th className="px-3 py-3 text-left font-semibold text-gray-700">Date</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-700">Party</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-700 max-w-[140px]">Description</th>
               <th className="px-3 py-3 text-right font-semibold text-gray-700">Debit</th>
@@ -384,37 +345,40 @@ export default function BankTransactionsTable({
               <th className="px-3 py-3 text-left font-semibold text-gray-700 min-w-[120px]">Split</th>
             </tr>
           </thead>
-          <SortableContext items={transactions.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-            <tbody className="divide-y">
-              {transactions.map((t) => (
-                <Fragment key={t.id}>
-                  <SortableRow id={t.id} disabled={disableDrag}>
-                    {({ attributes, listeners }) => (
-                      <>
-                        <td className="px-1 py-2 align-middle text-gray-400">
-                          <button
-                            type="button"
-                            className={`p-1 rounded text-gray-500 touch-none ${
-                              disableDrag
-                                ? 'cursor-default opacity-30'
-                                : 'hover:bg-gray-200 cursor-grab active:cursor-grabbing'
-                            }`}
-                            aria-label={disableDrag ? 'Reorder disabled' : 'Drag to reorder'}
-                            {...attributes}
-                            {...(disableDrag ? {} : (listeners ?? {}))}
-                            disabled={disableDrag}
-                          >
-                            ⋮⋮
-                          </button>
-                        </td>
-                        <td className="px-2 py-2 align-middle">
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(t.id)}
-                            onChange={() => onToggleSelect(t.id)}
-                          />
-                        </td>
-                        <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{fmtDate(t.transactionDate)}</td>
+          <tbody className="divide-y">
+            {transactions.map((t, rowIndex) => (
+              <Fragment key={t.id}>
+                <tr className="hover:bg-gray-50">
+                  <td className="px-0.5 py-2 align-middle">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <button
+                        type="button"
+                        className="leading-none px-1.5 py-0.5 rounded border border-gray-200 bg-white text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                        aria-label="Move up"
+                        disabled={disableDrag || rowIndex === 0}
+                        onClick={() => moveRow(rowIndex, -1)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="leading-none px-1.5 py-0.5 rounded border border-gray-200 bg-white text-gray-700 text-sm hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                        aria-label="Move down"
+                        disabled={disableDrag || rowIndex === transactions.length - 1}
+                        onClick={() => moveRow(rowIndex, 1)}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2 align-middle">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(t.id)}
+                      onChange={() => onToggleSelect(t.id)}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{fmtDate(t.transactionDate)}</td>
                         <td className="px-3 py-3 text-gray-700 align-top">
                           <div className="flex items-start gap-1">
                             {inline?.id === t.id && inline.field === 'partyName' ? (
@@ -563,15 +527,13 @@ export default function BankTransactionsTable({
                             )}
                           </div>
                         </td>
-                      </>
-                    )}
-                  </SortableRow>
-                  {t.isSplit &&
-                    (t.splits ?? []).map((sp) => (
-                      <tr key={sp.id} className="bg-slate-50/80">
-                        <td />
-                        <td />
-                        <td />
+                      </tr>
+                {t.isSplit &&
+                  (t.splits ?? []).map((sp) => (
+                    <tr key={sp.id} className="bg-slate-50/80">
+                      <td />
+                      <td />
+                      <td />
                         <td colSpan={2} className="px-3 py-2 pl-8 border-l-2 border-blue-300">
                           <span className="text-xs text-gray-500">Split · </span>
                           <input
@@ -667,13 +629,11 @@ export default function BankTransactionsTable({
                           </button>
                         </td>
                       </tr>
-                    ))}
-                </Fragment>
-              ))}
-            </tbody>
-          </SortableContext>
+                  ))}
+              </Fragment>
+            ))}
+          </tbody>
         </table>
-      </div>
-    </DndContext>
+    </div>
   );
 }

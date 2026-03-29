@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import BankTransactionsTable, { type BankTx } from './BankTransactionsTable';
+import AddTransactionModal from './AddTransactionModal';
+import { downloadBankTransactionsExcel, downloadBankTransactionsPdf } from './exportBankTransactions';
 
 type BankTransaction = BankTx;
 
@@ -73,6 +75,8 @@ export default function BankTransactionsPage() {
   const [newProjectNameInModal, setNewProjectNameInModal] = useState('');
   const [siteErrorInModal, setSiteErrorInModal] = useState('');
   const [modalProjects, setModalProjects] = useState<FinanceSite[]>([]);
+  const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
 
   const refreshTrashCount = useCallback(() => {
     if (!selectedUploadId) return;
@@ -375,13 +379,42 @@ export default function BankTransactionsPage() {
 
   const hasSelection = selectedIds.size > 0;
 
+  const exportBaseFilename = () => {
+    const raw = uploads.find((u) => u.id === selectedUploadId)?.fileName ?? 'bank-transactions';
+    const base = raw.replace(/\.[^.]+$/, '');
+    return `${base}-transactions-${new Date().toISOString().slice(0, 10)}`;
+  };
+
+  const handleExportExcel = () => {
+    downloadBankTransactionsExcel(transactions, exportBaseFilename());
+  };
+
+  const handleExportPdf = async () => {
+    setExportBusy(true);
+    try {
+      await downloadBankTransactionsPdf(transactions, exportBaseFilename());
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   return (
     <div className="p-6 lg:p-8 w-full max-w-[1600px]">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
         <h1 className="text-xl font-bold text-gray-900">Bank Transactions</h1>
-        <Link href="/admin/finance/bank-upload" className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium">
-          + Upload Statement
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowAddTransaction(true)}
+            disabled={uploads.length === 0 || viewTrash}
+            className="px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-800 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            + Add transaction
+          </button>
+          <Link href="/admin/finance/bank-upload" className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium">
+            + Upload Statement
+          </Link>
+        </div>
       </div>
 
       {uploads.length > 0 && (
@@ -710,20 +743,40 @@ export default function BankTransactionsPage() {
           ) : (
             <div className="border-t border-gray-100">
               <div
-                className={`px-3 py-2 border-b flex items-center gap-2 text-xs ${
+                className={`px-3 py-2 border-b flex flex-wrap items-center justify-between gap-2 text-xs ${
                   viewTrash ? 'bg-amber-50/90 border-amber-200 text-amber-900' : 'bg-gray-50/80 border-gray-100 text-gray-600'
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.size === transactions.length && transactions.length > 0}
-                  onChange={toggleSelectAll}
-                />
-                {viewTrash ? (
-                  <span>Recycle bin — select rows to restore or delete permanently</span>
-                ) : (
-                  <span>Select all for bulk actions</span>
-                )}
+                <div className="flex items-center gap-2 min-w-0">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === transactions.length && transactions.length > 0}
+                    onChange={toggleSelectAll}
+                  />
+                  {viewTrash ? (
+                    <span>Recycle bin — select rows to restore or delete permanently</span>
+                  ) : (
+                    <span>Select all for bulk actions</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleExportExcel}
+                    disabled={exportBusy}
+                    className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-gray-800 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Download Excel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportPdf}
+                    disabled={exportBusy}
+                    className="px-2.5 py-1 rounded-md border border-gray-300 bg-white text-gray-800 text-xs font-medium hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {exportBusy ? 'Preparing PDF…' : 'Download PDF'}
+                  </button>
+                </div>
               </div>
               <BankTransactionsTable
                 uploadId={selectedUploadId}
@@ -905,6 +958,21 @@ export default function BankTransactionsPage() {
         </div>
       )}
 
+      <AddTransactionModal
+        open={showAddTransaction}
+        onClose={() => setShowAddTransaction(false)}
+        uploads={uploads}
+        categories={categories}
+        sites={sites}
+        selectedUploadId={selectedUploadId}
+        sortDate={sortDate}
+        disabled={viewTrash}
+        onCreated={() => {
+          fetchTransactions();
+          refreshSummary();
+          refreshTrashCount();
+        }}
+      />
     </div>
   );
 }
