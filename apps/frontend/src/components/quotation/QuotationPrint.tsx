@@ -49,6 +49,13 @@ export default function QuotationPrint({ data, isPdfMode = false, quotationId }:
     return () => { document.title = prev; };
   }, [data.quoteNumber, data.clientName, data.systemSizeKw]);
 
+  useEffect(() => {
+    if (isPdfMode) {
+      document.documentElement.classList.add('pdf-mode');
+      return () => document.documentElement.classList.remove('pdf-mode');
+    }
+  }, [isPdfMode]);
+
   const handlePrint = () => {
     const desiredTitle = getProposalTitle(data);
     const prev = document.title;
@@ -129,7 +136,11 @@ export default function QuotationPrint({ data, isPdfMode = false, quotationId }:
       )}
 
       {/* ── All pages ──────────────────────────────────────────────────────── */}
-      <div id="quotation-root" className="quotation-wrapper" data-pdf-ready="true">
+      <div
+        id="quotation-root"
+        className={`quotation-wrapper ${isPdfMode ? 'pdf-capturing w-[1200px] min-w-[1200px] mx-auto' : 'w-full'}`}
+        data-pdf-ready="true"
+      >
 
         {/* Page 1 — Cover */}
         <CoverPage

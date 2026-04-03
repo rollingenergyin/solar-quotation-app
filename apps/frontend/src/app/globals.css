@@ -24,6 +24,7 @@ body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+
 /* ─── Quotation page sheet ─────────────────────────────────────────────────── */
 .quotation-page {
   width: 210mm;
@@ -153,8 +154,12 @@ body {
   box-shadow: 0 4px 24px rgba(22, 28, 52, 0.12);
 }
 
-/* PDF capture: remove spacing only, preserve layout */
+/* PDF capture: force desktop layout, remove spacing */
 .quotation-wrapper.pdf-capturing {
+  width: 1200px !important;
+  max-width: 1200px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
   padding: 0;
   gap: 0;
   background: white;
@@ -165,9 +170,69 @@ body {
   display: none !important;
 }
 
+/* ─── PDF mode: force desktop layout, disable responsive breakpoints ───────── */
+.pdf-mode {
+  width: 1200px !important;
+}
+
+.pdf-mode * {
+  max-width: none !important;
+}
+
+/* Preserve A4 page size for quotation sheets */
+.pdf-mode .quotation-page {
+  max-width: 210mm !important;
+}
+
+.pdf-mode body {
+  zoom: 1 !important;
+}
+
+.pdf-mode .quotation-wrapper,
+.pdf-mode #quotation-root,
+.pdf-mode .container {
+  width: 1200px !important;
+  max-width: 1200px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Override Tailwind responsive breakpoints in PDF mode */
+@media (max-width: 2000px) {
+  .pdf-mode .md\:grid-cols-2,
+  .pdf-mode .sm\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .pdf-mode .md\:grid-cols-3,
+  .pdf-mode .lg\:grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .pdf-mode .sm\:grid-cols-4,
+  .pdf-mode .md\:grid-cols-4,
+  .pdf-mode .lg\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .pdf-mode .lg\:grid-cols-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  }
+
+  .pdf-mode .md\:flex-row,
+  .pdf-mode .lg\:flex-row {
+    flex-direction: row !important;
+  }
+
+  .pdf-mode .md\:text-lg,
+  .pdf-mode .lg\:text-lg {
+    font-size: 1.125rem !important;
+  }
+}
+
 /* ─── Shared input utility ─────────────────────────────────────────────────── */
 @layer components {
   .input {
-    @apply w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-solar-400;
+    @apply w-full border border-gray-200 rounded-lg px-3 py-3 text-base min-h-[44px] focus:outline-none focus:ring-2 focus:ring-solar-400;
   }
 }

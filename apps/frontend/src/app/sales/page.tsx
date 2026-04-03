@@ -13,7 +13,7 @@ export default function SalesDashboard() {
   }, []);
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       <div className="flex items-center gap-4 mb-6">
         <RollingEnergyLogo variant="light" size="md" />
         <div>
@@ -23,7 +23,7 @@ export default function SalesDashboard() {
       </div>
 
       {/* Quick action cards */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {/* Quick Quotation — featured card */}
         <Link href="/sales/quick-quotation"
           className="col-span-1 group rounded-2xl p-6 flex flex-col justify-between cursor-pointer border-0 transition-all hover:scale-[1.02] hover:shadow-xl"

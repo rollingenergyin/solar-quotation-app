@@ -49,7 +49,7 @@ export default function CostBreakdown({
       type: 'normal',
     },
     {
-      label: 'GST @ 12%',
+      label: 'GST @ 8.9%',
       desc: 'Goods & Services Tax on solar equipment and services',
       amount: gstAmount,
       type: 'tax',

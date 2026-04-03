@@ -251,9 +251,9 @@ async function main() {
       slug: 'annual-generation', name: 'Annual Energy Generation',
       description: 'Estimated annual electricity produced by the solar system',
       sortOrder: 10,
-      expression: 'system_kw * peak_sun_hours * 365 * system_efficiency',
+      expression: 'system_kw * peak_sun_hours * 300 * system_efficiency',
       variables: ['system_kw', 'peak_sun_hours', 'system_efficiency'],
-      versionDesc: 'Annual kWh = System kW × Peak sun hours × 365 × Efficiency',
+      versionDesc: 'Annual kWh = System kW × Peak sun hours × 300 × Efficiency',
     },
     {
       slug: 'daily-production', name: 'Daily Energy Production',

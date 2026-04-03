@@ -52,6 +52,7 @@ interface QuotationInfo {
   version?: number;
   notes?: string;
   inverterSizeKw?: number | null;
+  sanctionedLoadKw?: number | null;
   generatedPdfPath?: string | null;
   customer: { name: string };
   site: { name?: string; address: string };
@@ -75,7 +76,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
   const [systemType, setSystemType]     = useState<'DCR' | 'NON_DCR'>('DCR');
   const [siteType, setSiteType]         = useState<'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL'>('RESIDENTIAL');
   const [pricePerWatt, setPricePerWatt] = useState('38');
-  const [electricityRate, setElectricityRate] = useState('8');
+  const [electricityRate, setElectricityRate] = useState('18');
   const [systemSizeKw, setSystemSizeKw] = useState('');
   const [inverterSizeKw, setInverterSizeKw] = useState('');
   const [inverterManuallyEdited, setInverterManuallyEdited] = useState(false);
@@ -83,7 +84,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
   const [gstPct, setGstPct] = useState('18');
   const [subsidyOverride, setSubsidyOverride] = useState('');
   const [gridInflation, setGridInflation] = useState('3');
-  const [peakSunHours, setPeakSunHours] = useState('5');
+  const [peakSunHours, setPeakSunHours] = useState('4');
   const [efficiency, setEfficiency] = useState('0.8');
   const [lifeYears, setLifeYears] = useState('25');
   const [emiRate, setEmiRate] = useState('9');
@@ -98,6 +99,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
       const q = await api<QuotationInfo>(`/quotations/${id}`);
       setQuotation(q);
       if (q.inverterSizeKw != null) setInverterSizeKw(String(q.inverterSizeKw));
+      if (q.sanctionedLoadKw != null) setSanctionedLoadKw(String(q.sanctionedLoadKw));
     } catch { setError('Failed to load quotation'); }
     finally { setLoading(false); }
   }, [id]);
@@ -166,7 +168,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
   }[emiTab];
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-4 md:p-6 max-w-6xl mx-auto w-full space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -199,7 +201,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* ── Left: Input form ── */}
         <div className="col-span-1 space-y-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
@@ -290,7 +292,6 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
                 value={sanctionedLoadKw} onChange={(e) => setSanctionedLoadKw(e.target.value)}
                 className="input" />
             </Field>
-
             {/* Advanced toggle */}
             <button type="button" onClick={() => setShowAdvanced(!showAdvanced)}
               className="text-xs text-yellow-600 hover:text-yellow-700 font-medium w-full text-left">

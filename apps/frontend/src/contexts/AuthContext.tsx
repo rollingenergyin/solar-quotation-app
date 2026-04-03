@@ -3,7 +3,7 @@
 import React, {
   createContext,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useState,
   useCallback,
 } from 'react';
@@ -50,23 +50,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
-    const storedUser = localStorage.getItem(USER_KEY);
+  /** useLayoutEffect + finally: always clear loading (avoids endless “Loading…” if localStorage throws or /auth/me hangs). */
+  useLayoutEffect(() => {
+    try {
+      const storedToken = localStorage.getItem(TOKEN_KEY);
+      const storedUser = localStorage.getItem(USER_KEY);
 
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        logout();
+      if (storedToken && storedUser) {
+        setToken(storedToken);
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch {
+          logout();
+        }
+        void api<User>('/auth/me')
+          .then((me) => setUser((u) => (u ? ({ ...u, ...me } as User) : null)))
+          .catch(() => logout());
       }
-      // Validate token and refresh user data
-      api<User>('/auth/me')
-        .then((me) => setUser((u) => (u ? ({ ...u, ...me } as User) : null)))
-        .catch(() => logout());
+    } catch (e) {
+      console.error('[Auth] session restore failed', e);
+      try {
+        logout();
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, [logout]);
 
   const value: AuthContextValue = {

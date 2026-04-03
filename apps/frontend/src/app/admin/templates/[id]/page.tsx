@@ -151,7 +151,7 @@ export default function TemplateEditorPage() {
   const loadTemplate = useCallback(async (templateId: string) => {
     try {
       const url = templateId === 'new' ? `${API_URL}/templates/active` : `${API_URL}/templates/${templateId}`;
-      const res = await fetch(url, { headers: authHeaders() });
+      const res = await fetch(url, { headers: authHeaders(), credentials: 'include' });
       if (!res.ok) throw new Error('Failed to load template');
       const data = await res.json();
       setTemplate(isNew ? { ...data, id: undefined, name: `${data.name} (New Version)` } : data);
@@ -174,12 +174,14 @@ export default function TemplateEditorPage() {
         res = await fetch(`${API_URL}/templates`, {
           method: 'POST',
           headers: authHeaders(),
+          credentials: 'include',
           body: JSON.stringify(template),
         });
       } else {
         res = await fetch(`${API_URL}/templates/${id}`, {
           method: 'PUT',
           headers: authHeaders(),
+          credentials: 'include',
           body: JSON.stringify(template),
         });
       }
@@ -253,12 +255,12 @@ export default function TemplateEditorPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 px-8 py-6 max-w-4xl mx-auto w-full">
+      <div className="flex-1 px-4 md:px-8 py-6 max-w-4xl mx-auto w-full">
 
         {/* ── Company Info ──────────────────────────────────────────────── */}
         {activeTab === 'company' && (
           <Section title="Company Information" desc="These details appear throughout the proposal — cover page, header, footer, and contact page.">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <FieldLabel>Company Name</FieldLabel>
                 <TextInput value={t.companyName ?? ''} onChange={(v) => set('companyName', v)} placeholder="Rolling Energy" />
@@ -289,7 +291,7 @@ export default function TemplateEditorPage() {
               </div>
               <div className="col-span-2 border-t border-gray-100 pt-4 mt-2">
                 <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Template Assignment (when this template is used)</p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <FieldLabel>System Type</FieldLabel>
                     <select
@@ -512,7 +514,7 @@ export default function TemplateEditorPage() {
                 DCR + Commercial → ₹0 &nbsp;|&nbsp;
                 Non-DCR → ₹0 (depreciation applies)
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <FieldLabel>Residential — 1 kW Subsidy (₹)</FieldLabel>
                   <input type="number" min="0" step="1000"

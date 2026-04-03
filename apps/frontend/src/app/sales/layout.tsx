@@ -18,9 +18,9 @@ export default function SalesLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex flex-col md:flex-row min-h-screen bg-gray-50">
       <SalesSidebar />
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto pt-16 md:pt-0 min-w-0">{children}</main>
     </div>
   );
 }

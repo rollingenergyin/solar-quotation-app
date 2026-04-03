@@ -31,7 +31,7 @@ export default function NewCustomerPage() {
   };
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-4 md:p-8 max-w-2xl mx-auto w-full">
       <div className="flex items-center gap-2 mb-6">
         <Link href="/sales/customers" className="text-sm text-gray-400 hover:text-gray-600">Customers</Link>
         <span className="text-gray-300">/</span>
@@ -43,7 +43,7 @@ export default function NewCustomerPage() {
       <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-5">
         <div>
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Basic Info</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="text-xs text-gray-500 mb-1 block">Full Name *</label>
               <input required value={form.name} onChange={f('name')} placeholder="Subhan Bhakaji Ghenand"
@@ -77,7 +77,7 @@ export default function NewCustomerPage() {
           <div className="space-y-3">
             <input value={form.address} onChange={f('address')} placeholder="Street address"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400" />
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               <input value={form.city} onChange={f('city')} placeholder="City"
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400" />
               <select value={form.state} onChange={f('state')}

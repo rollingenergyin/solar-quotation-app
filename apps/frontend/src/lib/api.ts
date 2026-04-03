@@ -1,6 +1,5 @@
-// Base URL must include /api - backend routes are under /api
-const RAW_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-export const API_URL = RAW_BASE.endsWith('/api') ? RAW_BASE : `${RAW_BASE.replace(/\/$/, '')}/api`;
+// Same-domain routing - all API calls are relative
+export const API_URL = '/api';
 const FETCH_TIMEOUT_MS = 15000;
 
 function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
@@ -21,6 +20,12 @@ export async function api<T>(
     ...options.headers,
   };
 
+  const fetchOptions: RequestInit = {
+    ...options,
+    headers,
+    credentials: 'include',
+  };
+
   if (token) {
     (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   }
@@ -29,13 +34,13 @@ export async function api<T>(
   try {
     res = await fetchWithTimeout(
       `${API_URL}${path}`,
-      { ...options, headers },
+      fetchOptions,
       FETCH_TIMEOUT_MS
     );
   } catch (err) {
     const msg =
       err instanceof Error && err.name === 'AbortError'
-        ? `Request timed out. Is the backend running at ${API_URL.replace('/api', '')}?`
+        ? 'Request timed out. Is the backend reachable?'
         : err instanceof Error
           ? err.message
           : 'Network error';

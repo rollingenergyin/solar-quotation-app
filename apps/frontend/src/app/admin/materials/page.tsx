@@ -80,7 +80,7 @@ export default function MaterialsPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Materials & Specs</h1>
         <button onClick={openAdd} className="bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
@@ -91,7 +91,7 @@ export default function MaterialsPage() {
       <input
         type="text" placeholder="Search materials…" value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="mb-4 w-full max-w-xs border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
+        className="mb-4 w-full border border-gray-200 rounded-lg px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-yellow-400 min-h-[44px]"
       />
 
       {showForm && (
@@ -106,13 +106,13 @@ export default function MaterialsPage() {
               </select>
               <input placeholder="Name *" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input placeholder="Brand" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })}
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
                 <input placeholder="Model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })}
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
                   {UNITS.map((u) => <option key={u}>{u}</option>)}

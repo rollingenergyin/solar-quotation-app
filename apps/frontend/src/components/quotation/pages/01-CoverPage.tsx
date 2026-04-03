@@ -95,7 +95,7 @@ export default function CoverPage({ clientName, systemSizeKw, date, quoteNumber 
           CONFIDENTIAL · For authorised recipient only
         </p>
         <p className="text-xs" style={{ color: '#6690cc' }}>
-          rollingenergy.in · +91 98765 43210
+          rollingenergy.in
         </p>
       </div>
     </div>

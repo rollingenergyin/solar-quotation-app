@@ -4,8 +4,24 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { ROI_DAYS_PER_YEAR } from '@/constants/roi-generation';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+const GST_RATE = 0.089;
+
+function totalInclGstFromBase(base: number): number {
+  return base + Math.round(base * GST_RATE);
+}
+
+/** Inverse of base + round(base × GST_RATE) for whole-rupee gross inputs. */
+function baseFromTotalInclGst(gross: number): number {
+  const g = Math.round(gross);
+  for (let b = Math.max(0, Math.floor(g / (1 + GST_RATE)) - 20); b <= g; b++) {
+    if (totalInclGstFromBase(b) === g) return b;
+  }
+  return Math.round(g / (1 + GST_RATE));
+}
 
 const MONTHS = [
   { key: 'jan', label: 'Jan' }, { key: 'feb', label: 'Feb' },
@@ -53,11 +69,16 @@ function computeLive(
   systemType: string,
   siteType: string,
 ): LiveSummary | null {
-  if (systemSizeKw <= 0 || pricePerWatt <= 0) return null;
+  if (
+    typeof systemSizeKw !== 'number' || systemSizeKw <= 0 ||
+    typeof pricePerWatt !== 'number' || pricePerWatt <= 0 ||
+    !Number.isFinite(electricityRate) || electricityRate <= 0 ||
+    !Number.isFinite(peakSunHours) || peakSunHours <= 0
+  ) return null;
 
   const roofAreaSqft         = Math.round(systemSizeKw * 80);
   const dailyProductionKwh   = Math.round(systemSizeKw * peakSunHours * 10) / 10;
-  const annualProductionKwh  = Math.round(dailyProductionKwh * 365);
+  const annualProductionKwh  = Math.round(dailyProductionKwh * ROI_DAYS_PER_YEAR);
 
   // Quick Quotation: no profit addition — the entered base cost is the total price
   const baseCost      = Math.round(systemSizeKw * 1000 * pricePerWatt);
@@ -68,19 +89,39 @@ function computeLive(
   const annualSavings = Math.round(annualProductionKwh * electricityRate);
   const breakevenYears = annualSavings > 0 ? Math.round((netCost / annualSavings) * 10) / 10 : 0;
 
+  // Guard against Infinity/NaN
+  const safe = (x: number) => (Number.isFinite(x) ? x : 0);
   return {
-    systemSizeKw, roofAreaSqft, dailyProductionKwh, annualProductionKwh,
-    baseCost, gstAmount, grossCost, subsidyAmount, netCost,
-    annualSavings, breakevenYears,
-    pricePerWattEffective: pricePerWatt,
+    systemSizeKw: safe(systemSizeKw),
+    roofAreaSqft: safe(roofAreaSqft),
+    dailyProductionKwh: safe(dailyProductionKwh),
+    annualProductionKwh: safe(annualProductionKwh),
+    baseCost: safe(baseCost),
+    gstAmount: safe(gstAmount),
+    grossCost: safe(grossCost),
+    subsidyAmount: safe(subsidyAmount),
+    netCost: safe(netCost),
+    annualSavings: safe(annualSavings),
+    breakevenYears: safe(breakevenYears),
+    pricePerWattEffective: safe(pricePerWatt),
   };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
-const fmtL = (n: number) =>
-  n >= 100_000 ? `₹${(n / 100_000).toFixed(2)}L` : `₹${fmt(n)}`;
+const fmt = (n: number): string => {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '0';
+  try {
+    return n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  } catch {
+    return String(Math.round(n));
+  }
+};
+const fmtL = (n: number): string => {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return '₹0';
+  if (n >= 100_000) return `₹${(n / 100_000).toFixed(2)}L`;
+  return `₹${fmt(n)}`;
+};
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -108,10 +149,11 @@ export default function QuickQuotationPage() {
   // ── Pricing
   const [pricePerWatt, setPricePerWatt]       = useState('55');
   const [totalBaseAmount, setTotalBaseAmount] = useState('');
+  const [totalCostInclGst, setTotalCostInclGst] = useState('');
 
   // ── Params
-  const [electricityRate, setElectricityRate]     = useState('8');
-  const [peakSunHours, setPeakSunHours]           = useState('5');
+  const [electricityRate, setElectricityRate]     = useState('18');
+  const [peakSunHours, setPeakSunHours]           = useState('4');
   const [sanctionedLoadKw, setSanctionedLoadKw]   = useState('');
 
   // ── Form state
@@ -141,8 +183,13 @@ export default function QuickQuotationPage() {
     if (ppw > 0) return ppw;
     const total = parseFloat(totalBaseAmount);
     if (total > 0 && derivedSystemKw > 0) return total / (derivedSystemKw * 1000);
+    const gross = parseFloat(totalCostInclGst);
+    if (gross > 0 && derivedSystemKw > 0) {
+      const base = baseFromTotalInclGst(gross);
+      return base / (derivedSystemKw * 1000);
+    }
     return 0;
-  }, [pricePerWatt, totalBaseAmount, derivedSystemKw]);
+  }, [pricePerWatt, totalBaseAmount, totalCostInclGst, derivedSystemKw]);
 
   // ── Auto-sync pricing fields ──────────────────────────────────────────────
 
@@ -150,9 +197,12 @@ export default function QuickQuotationPage() {
     setPricePerWatt(v);
     const ppw = parseFloat(v);
     if (ppw > 0 && derivedSystemKw > 0) {
-      setTotalBaseAmount(String(Math.round(derivedSystemKw * 1000 * ppw)));
+      const base = Math.round(derivedSystemKw * 1000 * ppw);
+      setTotalBaseAmount(String(base));
+      setTotalCostInclGst(String(totalInclGstFromBase(base)));
     } else {
       setTotalBaseAmount('');
+      setTotalCostInclGst('');
     }
   };
 
@@ -161,16 +211,33 @@ export default function QuickQuotationPage() {
     const total = parseFloat(v);
     if (total > 0 && derivedSystemKw > 0) {
       setPricePerWatt((total / (derivedSystemKw * 1000)).toFixed(2));
+      setTotalCostInclGst(String(totalInclGstFromBase(Math.round(total))));
     } else {
+      setPricePerWatt('');
+      setTotalCostInclGst('');
+    }
+  };
+
+  const handleTotalCostInclGstChange = (v: string) => {
+    setTotalCostInclGst(v);
+    const gross = parseFloat(v);
+    if (gross > 0 && derivedSystemKw > 0) {
+      const base = baseFromTotalInclGst(gross);
+      setTotalBaseAmount(String(base));
+      setPricePerWatt((base / (derivedSystemKw * 1000)).toFixed(2));
+    } else {
+      setTotalBaseAmount('');
       setPricePerWatt('');
     }
   };
 
-  // When system size changes, re-sync total base amount from price per watt
+  // When system size changes, re-sync pricing fields from price per watt
   useEffect(() => {
     const ppw = parseFloat(pricePerWatt);
     if (ppw > 0 && derivedSystemKw > 0) {
-      setTotalBaseAmount(String(Math.round(derivedSystemKw * 1000 * ppw)));
+      const base = Math.round(derivedSystemKw * 1000 * ppw);
+      setTotalBaseAmount(String(base));
+      setTotalCostInclGst(String(totalInclGstFromBase(base)));
     }
   }, [derivedSystemKw]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -186,8 +253,8 @@ export default function QuickQuotationPage() {
   const summary = useMemo(() => computeLive(
     derivedSystemKw,
     effectivePricePerWatt,
-    parseFloat(electricityRate) || 8,
-    parseFloat(peakSunHours) || 5,
+    parseFloat(electricityRate) || 18,
+    parseFloat(peakSunHours) || 4,
     systemType,
     siteType,
   ), [derivedSystemKw, effectivePricePerWatt, electricityRate, peakSunHours, systemType, siteType]);
@@ -216,8 +283,8 @@ export default function QuickQuotationPage() {
         systemSizeKw: derivedSystemKw,
         inverterSizeKw: inverterSizeKw ? parseFloat(inverterSizeKw) : derivedSystemKw,
         pricePerWatt: effectivePricePerWatt,
-        electricityRatePerUnit: parseFloat(electricityRate) || 8,
-        peakSunHours: parseFloat(peakSunHours) || 5,
+        electricityRatePerUnit: parseFloat(electricityRate) || 18,
+        peakSunHours: parseFloat(peakSunHours) || 4,
         sanctionedLoadKw: sanctionedLoadKw ? parseFloat(sanctionedLoadKw) : undefined,
       };
 
@@ -263,14 +330,14 @@ export default function QuickQuotationPage() {
       </div>
 
       {/* ── Body ───────────────────────────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto px-6 py-6 flex gap-6">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 py-6 flex flex-col lg:flex-row gap-6 w-full">
 
         {/* ── LEFT: Form ──────────────────────────────────────────────────── */}
         <div className="flex-1 space-y-5 min-w-0">
 
           {/* ── Section 1: Customer Info ─────────────────────────────────── */}
           <FormCard title="1. Customer Information" icon="👤">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="col-span-2">
                 <FieldLabel required>Customer Name</FieldLabel>
                 <input
@@ -308,7 +375,7 @@ export default function QuickQuotationPage() {
 
           {/* ── Section 2: System Type ──────────────────────────────────── */}
           <FormCard title="2. System Configuration" icon="⚙️">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <FieldLabel>System Type</FieldLabel>
                 <ToggleGroup
@@ -365,7 +432,7 @@ export default function QuickQuotationPage() {
                 <p className="text-xs text-gray-500 mb-3">
                   Enter the units consumed each month. You can leave months blank — average is calculated from filled months only.
                 </p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {MONTHS.map(m => (
                     <div key={m.key}>
                       <label className="text-xs text-gray-500 mb-1 block">{m.label}</label>
@@ -433,7 +500,7 @@ export default function QuickQuotationPage() {
 
           {/* ── Section 4: Pricing ─────────────────────────────────────── */}
           <FormCard title="4. Pricing" icon="💰">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <FieldLabel required>Base Price per Watt (₹/W)</FieldLabel>
                 <div className="flex items-center gap-2">
@@ -449,10 +516,10 @@ export default function QuickQuotationPage() {
                   />
                   <span className="text-sm text-gray-400 whitespace-nowrap">/ watt</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Changes total base amount automatically</p>
+                <p className="text-xs text-gray-400 mt-1">Updates base amount and total incl. GST</p>
               </div>
               <div>
-                <FieldLabel>Total Base Amount (₹)</FieldLabel>
+                <FieldLabel>Total Base Amount (ex GST) (₹)</FieldLabel>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-400">₹</span>
                   <input
@@ -465,14 +532,30 @@ export default function QuickQuotationPage() {
                     className={`${inputCls} text-right tabular-nums`}
                   />
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Changes price per watt automatically</p>
+                <p className="text-xs text-gray-400 mt-1">Updates ₹/W and total incl. GST</p>
+              </div>
+              <div>
+                <FieldLabel>Total Cost incl. GST (₹)</FieldLabel>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-400">₹</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    placeholder="auto-calculated"
+                    value={totalCostInclGst}
+                    onChange={e => handleTotalCostInclGstChange(e.target.value)}
+                    className={`${inputCls} text-right tabular-nums`}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">GST 8.9% — updates base and ₹/W</p>
               </div>
             </div>
           </FormCard>
 
           {/* ── Section 5: Quick Parameters ────────────────────────────── */}
           <FormCard title="5. Quick Parameters" icon="🔧">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <FieldLabel>Electricity Rate (₹ per unit)</FieldLabel>
                 <div className="flex items-center gap-2">
@@ -525,7 +608,7 @@ export default function QuickQuotationPage() {
           </FormCard>
 
           {/* ── Sanctioned Load Note (live preview) ─────────────────── */}
-          {sanctionedLoadKw && parseFloat(sanctionedLoadKw) > 0 && derivedSystemKw > 0 && (
+          {sanctionedLoadKw && Number.isFinite(parseFloat(sanctionedLoadKw)) && parseFloat(sanctionedLoadKw) > 0 && derivedSystemKw > 0 && (
             <div
               className="rounded-2xl px-5 py-4 border"
               style={{
@@ -562,7 +645,7 @@ export default function QuickQuotationPage() {
         </div>
 
         {/* ── RIGHT: Live Summary ──────────────────────────────────────────── */}
-        <div className="w-80 shrink-0">
+        <div className="w-full lg:w-80 shrink-0">
           <div className="sticky top-[73px] space-y-3">
 
             {/* Summary card */}

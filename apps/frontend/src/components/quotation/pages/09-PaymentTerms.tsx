@@ -4,9 +4,7 @@ import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
 import type { TemplateConfig, TemplatePaymentMilestone, TemplatePaymentMode } from '../../../types/quotation-template';
 
-interface Props { quoteNumber: string; netCost: number; config?: TemplateConfig | null; pageNumber?: number; totalPages?: number }
-
-const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+interface Props { quoteNumber: string; netCost?: number; config?: TemplateConfig | null; pageNumber?: number; totalPages?: number }
 
 const DEFAULT_MILESTONES: TemplatePaymentMilestone[] = [
   { step: '01', title: 'Order Confirmation', pct: 50, desc: 'Token advance upon signing of agreement. Enables procurement of all equipment and scheduling of installation team.', icon: '✅' },
@@ -22,18 +20,14 @@ const DEFAULT_MODES: TemplatePaymentMode[] = [
 ];
 
 const DEFAULT_BULLETS = [
-  'Quotation valid for 30 days from the date of issue.',
   'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
   'PM Surya Ghar subsidy is subject to DISCOM approval and government policy at time of commissioning.',
   "Bank loan/EMI arrangements are as per the lending institution's terms and discretion.",
   'Any applicable DISCOM/net metering charges are additional and borne by the customer.',
 ];
 
-export default function PaymentTerms({ quoteNumber, netCost, config, pageNumber = 9, totalPages = 13 }: Props) {
-  const milestones = (config?.paymentMilestones?.length ? config.paymentMilestones : DEFAULT_MILESTONES).map((m) => ({
-    ...m,
-    amount: Math.round(netCost * m.pct / 100),
-  }));
+export default function PaymentTerms({ quoteNumber, config, pageNumber = 9, totalPages = 13 }: Props) {
+  const milestones = config?.paymentMilestones?.length ? config.paymentMilestones : DEFAULT_MILESTONES;
   const modes   = config?.paymentModes?.length       ? config.paymentModes       : DEFAULT_MODES;
   const bullets = config?.paymentTermsBullets?.length ? config.paymentTermsBullets : DEFAULT_BULLETS;
 
@@ -105,7 +99,7 @@ export default function PaymentTerms({ quoteNumber, netCost, config, pageNumber 
                 </p>
               </div>
 
-              {/* Amount */}
+              {/* Share of project value (percentage only) */}
               <div className="text-right flex-shrink-0">
                 <p
                   className="text-xl font-bold"
@@ -114,13 +108,13 @@ export default function PaymentTerms({ quoteNumber, netCost, config, pageNumber 
                     fontFamily: 'Poppins, sans-serif',
                   }}
                 >
-                  {fmt(m.amount)}
+                  {m.pct}%
                 </p>
                 <p
                   className="text-xs"
                   style={{ color: idx < 2 ? 'rgba(255,255,255,0.5)' : '#9ca3af' }}
                 >
-                  {m.pct}% of total
+                  of project value
                 </p>
               </div>
             </div>

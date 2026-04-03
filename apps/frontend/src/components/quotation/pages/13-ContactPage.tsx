@@ -109,8 +109,6 @@ export default function ContactPage({ quoteNumber, config, pageNumber = 13, tota
         >
           <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
             Quote Reference: <span style={{ color: '#6690cc' }}>{quoteNumber}</span>
-            <span className="mx-3" style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
-            This proposal is valid for <strong style={{ color: 'rgba(255,255,255,0.8)' }}>30 days</strong> from the date of issue
           </p>
         </div>
       </div>

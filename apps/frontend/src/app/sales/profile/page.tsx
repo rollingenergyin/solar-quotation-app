@@ -79,7 +79,7 @@ export default function SalesProfilePage() {
   }
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-4 md:p-8 max-w-2xl mx-auto w-full">
       <div className="flex items-center gap-4 mb-6">
         <RollingEnergyLogo variant="light" size="md" />
         <div>
@@ -131,7 +131,7 @@ export default function SalesProfilePage() {
             </form>
           ) : (
             <>
-              <dl className="grid grid-cols-2 gap-3 text-sm">
+              <dl className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                 <dt className="text-gray-500">Name</dt>
                 <dd className="font-medium">{profile.name}</dd>
                 <dt className="text-gray-500">User ID</dt>

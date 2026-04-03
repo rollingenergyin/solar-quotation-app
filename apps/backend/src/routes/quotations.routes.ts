@@ -9,8 +9,9 @@ import { authenticate } from '../middleware/auth.js';
 import { requireRoles } from '../middleware/roles.js';
 import { Role } from '@prisma/client';
 import { calculateQuotation } from '../services/quotation.service.js';
+import { ROI_DAYS_PER_YEAR } from '../constants/roi-generation.js';
 import { generateFilledPdf, calc30YrSavings, calcLoanEmi, type PdfValues } from '../services/pdf.service.js';
-import { generateQuotationPdf, validatePdfToken } from '../services/pdf-generation.service.js';
+import { generateQuotationPdf, generateQuotationPdfBuffer } from '../services/pdf-generation.service.js';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -202,14 +203,8 @@ router.get('/:id', authenticate, async (req: Request, res: Response, next: NextF
   } catch (err) { next(err); }
 });
 
-/** Auth for template-data: Bearer token OR valid pdf_token (for Puppeteer PDF generation) */
-function templateDataAuth(req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) {
-  const pdfToken = req.query.pdf_token as string | undefined;
-  if (pdfToken && req.params.id && validatePdfToken(req.params.id, pdfToken)) {
-    return next();
-  }
-  return authenticate(req, res, next);
-}
+/** Auth for template-data (used by frontend print preview) */
+const templateDataAuth = authenticate;
 
 /** Structured data for the HTML/CSS quotation template */
 router.get('/:id/template-data', templateDataAuth, async (req: Request, res: Response, next: NextFunction) => {
@@ -252,12 +247,12 @@ router.get('/:id/template-data', templateDataAuth, async (req: Request, res: Res
     const panelWatt  = 575;
     const numPanels  = Math.ceil(totalWatts / panelWatt);
 
-    const peakSun    = inputs.peakSunHours         ?? 5;
+    const peakSun    = inputs.peakSunHours         ?? 4;
     const efficiency = inputs.systemEfficiency      ?? 0.8;
     const inflation  = inputs.gridInflationPct      ?? 3;
-    const tariff     = inputs.electricityRatePerUnit ?? 8;
+    const tariff     = inputs.electricityRatePerUnit ?? 18;
 
-    const annualGenKwh = Math.round(systemKw * peakSun * 365 * efficiency);
+    const annualGenKwh = Math.round(systemKw * peakSun * ROI_DAYS_PER_YEAR * efficiency);
     const annualSavYr1 = Math.round(annualGenKwh * tariff);
 
     let savings30Yr = 0;
@@ -312,7 +307,7 @@ router.get('/:id/template-data', templateDataAuth, async (req: Request, res: Res
       inverterSizeKw: q.inverterSizeKw ?? systemKw,  // Default to system size if not set
       areaSquareFt: Math.round(systemKw * 80),  // 80 sq.ft per kW
 
-      dailyProductionKwh: Math.round((annualGenKwh / 365) * 10) / 10,
+      dailyProductionKwh: Math.round((annualGenKwh / ROI_DAYS_PER_YEAR) * 10) / 10,
       monthlyProductionKwh: Math.round(annualGenKwh / 12),
       annualProductionKwh: annualGenKwh,
 
@@ -380,11 +375,11 @@ async function generateAndSaveLegacyPdf(
   const panelWatt = 575;
   const numPanels = Math.ceil(totalWatts / panelWatt);
   const areaPerPanel = 15;
-  const peakSun = inputs.peakSunHours ?? 5;
+  const peakSun = inputs.peakSunHours ?? 4;
   const efficiency = inputs.systemEfficiency ?? 0.8;
   const inflation = inputs.gridInflationPct ?? 3;
-  const tariff = inputs.electricityRatePerUnit ?? 8;
-  const annualGenKwh = systemKw * peakSun * 365 * efficiency;
+  const tariff = inputs.electricityRatePerUnit ?? 18;
+  const annualGenKwh = systemKw * peakSun * ROI_DAYS_PER_YEAR * efficiency;
   const annualSavYr1 = Math.round(annualGenKwh * tariff);
   const savings30yr = calc30YrSavings(annualSavYr1, inflation);
   const netCost = costBreak.netCost ?? 0;
@@ -406,7 +401,7 @@ async function generateAndSaveLegacyPdf(
     x1: String(systemKw), x2: String(Math.round(totalWatts)), x3: dateStr,
     x4: q.customer.name, x5: q.site.address || (q.customer.address ?? ''), x6: q.customer.phone || q.customer.name,
     y1: String(numPanels), y2: String(numPanels * areaPerPanel), y3: String(Math.round(annualGenKwh / 12)),
-    y4: String(Math.round((annualGenKwh / 365) * 10) / 10), y5: fmtInr(monthlySavingsRs), y6: fmtInr(annualSavYr1),
+    y4: String(Math.round((annualGenKwh / ROI_DAYS_PER_YEAR) * 10) / 10), y5: fmtInr(monthlySavingsRs), y6: fmtInr(annualSavYr1),
     y7: String(payback), y8: fmtInr(savings30yr),
     z1: fmtInr(baseCost), z2: fmtInr(gstAmount), z3: fmtInr(grossCost), z4: fmtInr(subsidy), z5: fmtInr(netCost),
     a1: fmtInr(a1), a2: fmtInr(a2), a3: fmtInr(a3),
@@ -485,7 +480,7 @@ router.post(
         inverterSizeKw,
         pricePerWatt,
         electricityRatePerUnit,
-        peakSunHours = 5,
+        peakSunHours = 4,
         gstPct = 8.9,
         emiRatePct = 9,
         sanctionedLoadKw,
@@ -795,7 +790,38 @@ router.get('/debug-template', authenticate, async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
-/** Download quotation PDF — serve stored file if available, else generate DCR template */
+/** Generate and return PDF directly (no frontend). POST /quotations/pdf with body { id } */
+router.post('/pdf', authenticate, [
+  body('id').trim().notEmpty().withMessage('id required'),
+], async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const id = req.body.id as string;
+
+    const q = await prisma.quotation.findUnique({
+      where: { id },
+      select: { id: true, quoteNumber: true, result: true },
+    });
+    if (!q) return res.status(404).json({ error: 'Quotation not found' });
+    if (!q.result) {
+      return res.status(400).json({
+        error: 'Quotation not yet calculated. Please run the calculation first.',
+      });
+    }
+
+    const pdfBuffer = await generateQuotationPdfBuffer(id);
+    const filename = q.quoteNumber ? `${q.quoteNumber}.pdf` : 'quotation.pdf';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', String(pdfBuffer.length));
+    res.end(pdfBuffer);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Download quotation PDF — serve stored file if available, else generate via HTML template (fallback: legacy DCR) */
 router.get('/:id/pdf', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const q = await prisma.quotation.findUnique({
@@ -810,15 +836,15 @@ router.get('/:id/pdf', authenticate, async (req: Request, res: Response, next: N
       const filePath = join(UPLOADS_DIR, q.generatedPdfPath);
       if (existsSync(filePath)) {
         const buf = await readFile(filePath);
-        const filename = q.generatedPdfPath.includes('/') ? q.generatedPdfPath.split('/').pop()! : q.generatedPdfPath;
+        const filename = q.quoteNumber ? `${q.quoteNumber}.pdf` : 'quotation.pdf';
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.setHeader('Content-Length', String(buf.length));
         return res.end(buf);
       }
     }
 
-    // Fallback: generate DCR template PDF (legacy)
+    // Fallback: try HTML template (Puppeteer), then legacy DCR
     const qFull = await prisma.quotation.findUnique({
       where: { id: req.params.id },
       include: { customer: true, site: true, result: true },
@@ -830,54 +856,56 @@ router.get('/:id/pdf', authenticate, async (req: Request, res: Response, next: N
       });
     }
 
-    // ── Unpack stored breakdown ──────────────────────────────────────────
-    const breakdown  = (qFull.result!.breakdown as Record<string, unknown>) ?? {};
-    const inputs     = (breakdown.inputs      as Record<string, number>) ?? {};
-    const costBreak  = (breakdown.costBreakdown as Record<string, number>) ?? {};
+    let pdfBytes: Buffer;
+    try {
+      pdfBytes = await generateQuotationPdfBuffer(qFull.id);
+    } catch (puppeteerErr) {
+      console.warn('[PDF] Puppeteer failed, using legacy DCR:', (puppeteerErr as Error).message);
+      // ── Unpack stored breakdown (legacy DCR) ─────────────────────────────
+      const breakdown  = (qFull.result!.breakdown as Record<string, unknown>) ?? {};
+      const inputs     = (breakdown.inputs      as Record<string, number>) ?? {};
+      const costBreak  = (breakdown.costBreakdown as Record<string, number>) ?? {};
 
-    const systemKw     = inputs.systemSizeKw ?? (qFull.totalWattage ? qFull.totalWattage / 1000 : 0);
-    const totalWatts   = systemKw * 1000;
-    const panelWatt    = 575;
-    const numPanels    = Math.ceil(totalWatts / panelWatt);
-    const areaPerPanel = 15;                              // sq ft per 575W panel
+      const systemKw     = inputs.systemSizeKw ?? (qFull.totalWattage ? qFull.totalWattage / 1000 : 0);
+      const totalWatts   = systemKw * 1000;
+      const panelWatt    = 575;
+      const numPanels    = Math.ceil(totalWatts / panelWatt);
+      const areaPerPanel = 15;
 
-    const peakSun    = inputs.peakSunHours         ?? 5;
-    const efficiency = inputs.systemEfficiency      ?? 0.8;
-    const inflation  = inputs.gridInflationPct      ?? 3;
-    const tariff     = inputs.electricityRatePerUnit ?? 8;
+      const peakSun    = inputs.peakSunHours         ?? 4;
+      const efficiency = inputs.systemEfficiency      ?? 0.8;
+      const inflation  = inputs.gridInflationPct      ?? 3;
+      const tariff     = inputs.electricityRatePerUnit ?? 18;
 
-    const annualGenKwh = systemKw * peakSun * 365 * efficiency;
-    const annualSavYr1 = Math.round(annualGenKwh * tariff);
-    const savings30yr  = calc30YrSavings(annualSavYr1, inflation);
+      const annualGenKwh = systemKw * peakSun * ROI_DAYS_PER_YEAR * efficiency;
+      const annualSavYr1 = Math.round(annualGenKwh * tariff);
+      const savings30yr  = calc30YrSavings(annualSavYr1, inflation);
 
-    const netCost   = costBreak.netCost       ?? qFull.totalAmount ?? 0;
-    const baseCost  = costBreak.baseCost      ?? 0;
-    const gstAmount = costBreak.gstAmount     ?? 0;
-    const grossCost = costBreak.grossCost     ?? 0;
-    const subsidy   = costBreak.subsidyAmount ?? 0;
+      const netCost   = costBreak.netCost       ?? qFull.totalAmount ?? 0;
+      const baseCost  = costBreak.baseCost      ?? 0;
+      const gstAmount = costBreak.gstAmount     ?? 0;
+      const grossCost = costBreak.grossCost     ?? 0;
+      const subsidy   = costBreak.subsidyAmount ?? 0;
 
-    // EMI: use values from breakdown (reducing balance, 80% of total cost pre-subsidy) or recalc
-    const emiDataPdf = breakdown.emi as Record<string, { emi?: number }> | undefined;
-    const loanRate = inputs.emiRatePct ?? 9;
-    const a1 = emiDataPdf?.tenure3yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 36);
-    const a2 = emiDataPdf?.tenure5yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 60);
-    const a3 = emiDataPdf?.tenure7yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 84);
+      const emiDataPdf = breakdown.emi as Record<string, { emi?: number }> | undefined;
+      const loanRate = inputs.emiRatePct ?? 9;
+      const a1 = emiDataPdf?.tenure3yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 36);
+      const a2 = emiDataPdf?.tenure5yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 60);
+      const a3 = emiDataPdf?.tenure7yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 84);
 
-    const fmtInr = (n: number) =>
-      n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+      const fmtInr = (n: number) =>
+        n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
 
-    // Date in d/m/yyyy format matching the sample: "1/3/2026"
-    const now = new Date();
-    const dateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
+      const now = new Date();
+      const dateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
 
-    const payback = qFull.result!.roiYears
-      ? Math.round(qFull.result!.roiYears * 10) / 10
-      : 0;
+      const payback = qFull.result!.roiYears
+        ? Math.round(qFull.result!.roiYears * 10) / 10
+        : 0;
 
-    // Formatted Monthly savings (₹ amount, not kWh units)
-    const monthlySavingsRs = Math.round(annualSavYr1 / 12);
+      const monthlySavingsRs = Math.round(annualSavYr1 / 12);
 
-    const values: PdfValues = {
+      const values: PdfValues = {
       // ── System ──────────────────────────────────────────────────────
       x1: String(systemKw),
       x2: String(Math.round(totalWatts)),
@@ -889,7 +917,7 @@ router.get('/:id/pdf', authenticate, async (req: Request, res: Response, next: N
       y1: String(numPanels),
       y2: String(numPanels * areaPerPanel),
       y3: String(Math.round(annualGenKwh / 12)),
-      y4: String(Math.round((annualGenKwh / 365) * 10) / 10),
+      y4: String(Math.round((annualGenKwh / ROI_DAYS_PER_YEAR) * 10) / 10),
       y5: fmtInr(monthlySavingsRs),
       y6: fmtInr(annualSavYr1),
       y7: String(payback),
@@ -904,22 +932,23 @@ router.get('/:id/pdf', authenticate, async (req: Request, res: Response, next: N
       a1: fmtInr(a1),
       a2: fmtInr(a2),
       a3: fmtInr(a3),
-    };
+      };
 
-    const pdfBytes = await generateFilledPdf(values);
+      pdfBytes = Buffer.from(await generateFilledPdf(values));
 
-    // Auto-save generated PDF for future direct download (legacy fallback uses {quoteNumber}_v{version}.pdf)
-    if (!qFull.generatedPdfPath) {
-      try {
-        await mkdir(UPLOADS_DIR, { recursive: true });
-        const version = (qFull as { version?: number }).version ?? 1;
-        const filename = `${qFull.quoteNumber}_v${version}.pdf`;
-        await writeFile(join(UPLOADS_DIR, filename), Buffer.from(pdfBytes));
-        await prisma.quotation.update({
-          where: { id: qFull.id },
-          data: { generatedPdfPath: filename },
-        });
-      } catch { /* non-blocking */ }
+      // Auto-save generated PDF for future direct download
+      if (!qFull.generatedPdfPath) {
+        try {
+          await mkdir(UPLOADS_DIR, { recursive: true });
+          const version = (qFull as { version?: number }).version ?? 1;
+          const filename = `${qFull.quoteNumber}_v${version}.pdf`;
+          await writeFile(join(UPLOADS_DIR, filename), pdfBytes);
+          await prisma.quotation.update({
+            where: { id: qFull.id },
+            data: { generatedPdfPath: filename },
+          });
+        } catch { /* non-blocking */ }
+      }
     }
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -928,7 +957,7 @@ router.get('/:id/pdf', authenticate, async (req: Request, res: Response, next: N
       `attachment; filename="${qFull.quoteNumber}.pdf"`,
     );
     res.setHeader('Content-Length', pdfBytes.length);
-    res.end(Buffer.from(pdfBytes));
+    res.end(pdfBytes);
   } catch (err) {
     next(err);
   }

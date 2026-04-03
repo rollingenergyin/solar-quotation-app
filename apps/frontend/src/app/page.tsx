@@ -43,7 +43,7 @@ export default function HomePage() {
           <button onClick={logout} className="text-sm text-red-500 hover:text-red-700">Sign out</button>
         </div>
       </header>
-      <div className="p-8">
+      <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
         <p className="text-gray-600">Welcome back, <strong>{user.name}</strong>.</p>
       </div>
     </main>

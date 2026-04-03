@@ -347,7 +347,7 @@ export default function FormulasPage() {
   }
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto w-full">
 
       {/* Page header */}
       <div className="mb-8">

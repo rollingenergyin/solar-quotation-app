@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { ROI_DAYS_PER_YEAR, BILLING_DAYS_PER_MONTH } from '../constants/roi-generation.js';
 import { evaluateExpression } from './formula.service.js';
 
 const prisma = new PrismaClient();
@@ -158,7 +159,7 @@ export async function calculateQuotation(
   const profitMarginPct  = input.profitMarginPct  ?? sysDefaults['profit_pct']          ?? 15;
   const gstPct           = input.gstPct           ?? sysDefaults['gst_pct']             ?? 8.9;
   const gridInflationPct = input.gridInflationPct  ?? sysDefaults['grid_inflation_pct'] ?? 3;
-  const peakSunHours     = input.peakSunHours      ?? sysDefaults['peak_sun_hours']     ?? 5;
+  const peakSunHours     = input.peakSunHours      ?? sysDefaults['peak_sun_hours']     ?? 4;
   const systemEfficiency = input.systemEfficiency  ?? (sysDefaults['system_efficiency'] != null ? sysDefaults['system_efficiency'] / 100 : 0.8);
   const systemLifeYears  = input.systemLifeYears   ?? sysDefaults['system_life_years']  ?? 25;
   const emiRatePct       = input.emiRatePct        ?? sysDefaults['emi_rate_pct']       ?? 9;
@@ -184,7 +185,7 @@ export async function calculateQuotation(
   // ── System sizing ─────────────────────────────────────────────────────────
   let systemSizeKw = input.systemSizeKw;
   if (!systemSizeKw || systemSizeKw <= 0) {
-    const dailyKwh = avgMonthlyKwh / 30;
+    const dailyKwh = avgMonthlyKwh / BILLING_DAYS_PER_MONTH;
     const rawKw = dailyKwh / (peakSunHours * systemEfficiency);
     systemSizeKw = Math.max(1, Math.ceil(rawKw * 2) / 2);
   }
@@ -211,7 +212,7 @@ export async function calculateQuotation(
   const netCost = Math.max(0, grossCost - subsidyAmount);
 
   // ── Generation & savings ──────────────────────────────────────────────────
-  const annualGenKwh    = Math.round(systemSizeKw * peakSunHours * 365 * systemEfficiency);
+  const annualGenKwh    = Math.round(systemSizeKw * peakSunHours * ROI_DAYS_PER_YEAR * systemEfficiency);
   const annualSavings   = Math.round(annualGenKwh * input.electricityRatePerUnit);
   const yearlySavings   = buildYearlySavings(annualGenKwh, input.electricityRatePerUnit, gridInflationPct, systemLifeYears);
   const lifetimeSavings = yearlySavings.reduce((s, v) => s + v, 0);
