@@ -6,9 +6,9 @@
   "scripts": {
     "predev": "npx prisma generate",
     "dev": "tsx watch src/index.ts",
-    "typecheck": "npx tsc --noEmit",
-    "tsc:version": "npx tsc --version",
-    "build": "node -e \"console.log('--- Build env ---'); console.log('Node:', process.version); console.log('Platform:', process.platform);\" && npx tsc --version && npx prisma generate && npx tsc",
+    "typecheck": "./node_modules/.bin/tsc --noEmit",
+    "tsc:version": "./node_modules/.bin/tsc --version",
+    "build": "node -e \"const v=require('./node_modules/typescript/package.json').version; const ok=v==='5.6.3'; console.log('--- Build env ---'); console.log('Node:', process.version); console.log('Platform:', process.platform); console.log('TypeScript (local):', v); if(!ok){console.error('FATAL: expected TypeScript 5.6.3, got '+v); process.exit(1);}\" && ./node_modules/.bin/tsc --version && npx prisma generate && ./node_modules/.bin/tsc",
     "start": "node dist/index.js",
     "db:generate": "npx prisma generate",
     "db:migrate": "npx prisma migrate dev",
