@@ -7,13 +7,14 @@ services:
   # npm install picks up .npmrc (include=dev) which forces devDependencies to
   # be installed even though Render sets NODE_ENV=production during the build.
   # This ensures TypeScript 5.6.3 (devDep) is available for `tsc`.
+  # prisma migrate deploy applies all pending DB migrations on every deployment.
   - type: web
     name: solar-quotation-backend
     runtime: node
     rootDir: apps/backend
 
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: npx prisma migrate deploy && npm start
 
     envVars:
       - key: NODE_VERSION
