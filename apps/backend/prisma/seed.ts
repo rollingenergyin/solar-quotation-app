@@ -253,7 +253,7 @@ async function main() {
       sortOrder: 10,
       expression: 'system_kw * peak_sun_hours * 300 * system_efficiency',
       variables: ['system_kw', 'peak_sun_hours', 'system_efficiency'],
-      versionDesc: 'Annual kWh = System kW × Peak sun hours × 300 × Efficiency',
+      versionDesc: 'Annual kWh = System kW × Peak sun hours × 300 productive days × Efficiency',
     },
     {
       slug: 'daily-production', name: 'Daily Energy Production',

@@ -4,11 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 
+/** Built-in rows — backend refuses DELETE on these slugs. */
+const PROTECTED_TEMPLATE_SLUGS = new Set(['system-spgs', 'system-service', 'system-product']);
+
 type InvoiceTemplateRow = {
   id: string;
   name: string;
   slug: string;
   subtype: string;
+  isActive?: boolean;
   config: Record<string, unknown>;
   updatedAt: string;
 };
@@ -81,6 +85,7 @@ export default function InvoiceTemplatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [jsonText, setJsonText] = useState('');
+  const [templateBusy, setTemplateBusy] = useState(false);
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
@@ -113,6 +118,77 @@ export default function InvoiceTemplatesPage() {
     () => templates.find((t) => t.id === selectedId) ?? null,
     [templates, selectedId]
   );
+
+  const setActiveTemplate = async () => {
+    if (!selectedId) return;
+    setTemplateBusy(true);
+    setError(null);
+    try {
+      await api<InvoiceTemplateRow>(`/finance/invoice-templates/${selectedId}/set-active`, {
+        method: 'POST',
+      });
+      await loadList();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not set active template');
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const duplicateTemplate = async () => {
+    if (!selectedId) return;
+    setTemplateBusy(true);
+    setError(null);
+    try {
+      const row = await api<InvoiceTemplateRow>(`/finance/invoice-templates/${selectedId}/duplicate`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      await loadList();
+      setSelectedId(row.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not duplicate');
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const createTemplate = async (subtype: (typeof SUBTYPE_TAB_ORDER)[number]) => {
+    setTemplateBusy(true);
+    setError(null);
+    try {
+      const row = await api<InvoiceTemplateRow>('/finance/invoice-templates', {
+        method: 'POST',
+        body: JSON.stringify({ subtype }),
+      });
+      await loadList();
+      setSelectedId(row.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create template');
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
+
+  const deleteTemplate = async () => {
+    if (!selectedId || !selected) return;
+    if (PROTECTED_TEMPLATE_SLUGS.has(selected.slug)) {
+      setError('Built-in system templates cannot be deleted.');
+      return;
+    }
+    if (!window.confirm(`Delete template “${selected.name}”? This cannot be undone.`)) return;
+    setTemplateBusy(true);
+    setError(null);
+    try {
+      await api(`/finance/invoice-templates/${selectedId}`, { method: 'DELETE' });
+      await loadList();
+      setSelectedId(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not delete');
+    } finally {
+      setTemplateBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!selected) {
@@ -173,6 +249,8 @@ export default function InvoiceTemplatesPage() {
   const lineItems = (draft.labels as Record<string, unknown> | undefined)?.lineItems as Record<string, unknown> | undefined;
   const footer = (draft.labels as Record<string, unknown> | undefined)?.footer as Record<string, unknown> | undefined;
   const extraRows = (draft.extraTableRows as { id: string; label: string; enabled: boolean }[] | undefined) ?? [];
+  const defaultPaymentTermsBullets =
+    (draft.defaultPaymentTermsBullets as string[] | undefined) ?? [];
 
   const onLogoFile = (file: File | null) => {
     if (!file) return;
@@ -219,7 +297,7 @@ export default function InvoiceTemplatesPage() {
             <button
               type="button"
               onClick={save}
-              disabled={!selectedId || saving}
+              disabled={!selectedId || saving || templateBusy}
               className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save'}
@@ -238,15 +316,67 @@ export default function InvoiceTemplatesPage() {
                 key={t.id}
                 type="button"
                 onClick={() => setSelectedId(t.id)}
-                className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                className={`inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
                   selectedId === t.id
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50'
                 }`}
               >
-                {t.name}
+                <span className="truncate">{t.name}</span>
+                <span
+                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                    selectedId === t.id
+                      ? 'bg-white/20 text-white'
+                      : t.isActive
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {t.isActive ? 'Live' : t.subtype}
+                </span>
               </button>
             ))}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <span className="text-xs font-medium text-slate-500">Templates:</span>
+            <button
+              type="button"
+              onClick={setActiveTemplate}
+              disabled={!selectedId || templateBusy || selected?.isActive}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              Use for new invoices
+            </button>
+            <button
+              type="button"
+              onClick={duplicateTemplate}
+              disabled={!selectedId || templateBusy}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              Duplicate
+            </button>
+            <span className="text-xs text-slate-400">New:</span>
+            {SUBTYPE_TAB_ORDER.map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => createTemplate(st)}
+                disabled={templateBusy}
+                className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+              >
+                + {st}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={deleteTemplate}
+              disabled={
+                !selectedId || templateBusy || !selected || PROTECTED_TEMPLATE_SLUGS.has(selected.slug)
+              }
+              className="ml-auto rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm hover:bg-red-50 disabled:opacity-50"
+            >
+              Delete
+            </button>
           </div>
         </div>
 
@@ -289,15 +419,45 @@ export default function InvoiceTemplatesPage() {
                 <h2 className="text-lg font-semibold text-slate-900">Letterhead</h2>
                 <p className="text-sm text-slate-600">What appears at the top of every invoice from your company.</p>
 
-                <div>
+                <div className="space-y-3">
                   <span className={labelClass}>Logo</span>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    className="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-emerald-800"
-                    onChange={(e) => onLogoFile(e.target.files?.[0] ?? null)}
-                  />
-                  <p className="mt-1 text-xs text-slate-500">PNG or JPG. Shown next to your company name.</p>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600"
+                      checked={branding.showLogo !== false}
+                      onChange={(e) => patch(['branding', 'showLogo'], e.target.checked)}
+                    />
+                    <span className="text-sm text-slate-700">
+                      Show company logo on the invoice (uncheck to hide the logo; letterhead text stays).
+                    </span>
+                  </label>
+                  <div>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      disabled={branding.showLogo === false}
+                      className="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-emerald-800 disabled:opacity-50"
+                      onChange={(e) => onLogoFile(e.target.files?.[0] ?? null)}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      PNG or JPG. Shown next to your company name when logo is on.
+                    </p>
+                  </div>
+                  {typeof branding.logoDataUrl === 'string' && branding.logoDataUrl.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => patch(['branding', 'logoDataUrl'], null)}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+                      >
+                        Remove uploaded logo
+                      </button>
+                      <span className="text-xs text-slate-500">
+                        Clears the custom image; the default server logo is used again if the logo is shown.
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -382,6 +542,58 @@ export default function InvoiceTemplatesPage() {
                       value={String(colors.accent ?? '#6690cc')}
                       onChange={(e) => patch(['branding', 'colors', 'accent'], e.target.value)}
                     />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                  <p className="text-sm font-medium text-slate-800">Inner lines &amp; fills</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Hex colours (#rgb or #rrggbb). Inner lines are grid and table borders; outer is the main box around
+                    the invoice. Fills tint the top strip and table header bands.
+                  </p>
+                  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className={labelClass}>Inner line colour</label>
+                      <input
+                        type="text"
+                        className={fieldClass + ' font-mono text-xs'}
+                        value={String(colors.innerLine ?? colors.accent ?? '#6690cc')}
+                        onChange={(e) => patch(['branding', 'colors', 'innerLine'], e.target.value)}
+                        placeholder="#6690cc"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-500">Defaults to accent if empty.</p>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Outer border colour</label>
+                      <input
+                        type="text"
+                        className={fieldClass + ' font-mono text-xs'}
+                        value={String(colors.outerLine ?? colors.accent ?? '#6690cc')}
+                        onChange={(e) => patch(['branding', 'colors', 'outerLine'], e.target.value)}
+                        placeholder="#6690cc"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Strip fill (under “Tax invoice”)</label>
+                      <input
+                        type="text"
+                        className={fieldClass + ' font-mono text-xs'}
+                        value={String(colors.stripFill ?? '#f5f8fc')}
+                        onChange={(e) => patch(['branding', 'colors', 'stripFill'], e.target.value)}
+                        placeholder="#f5f8fc"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Table header fill</label>
+                      <input
+                        type="text"
+                        className={fieldClass + ' font-mono text-xs'}
+                        value={String(colors.tableHeaderFill ?? '#eef4fb')}
+                        onChange={(e) => patch(['branding', 'colors', 'tableHeaderFill'], e.target.value)}
+                        placeholder="#eef4fb"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-500">Line items header, GST block, footer sections.</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -663,7 +875,51 @@ export default function InvoiceTemplatesPage() {
             {selectedId && step === 'footer' && (
               <div className="max-w-lg space-y-6">
                 <h2 className="text-lg font-semibold text-slate-900">Footer &amp; signature</h2>
-                <p className="text-sm text-slate-600">Declaration and sign-off wording.</p>
+                <p className="text-sm text-slate-600">
+                  Payment terms defaults, declaration, and sign-off wording.
+                </p>
+
+                <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                  <p className="text-sm font-medium text-slate-800">Default payment terms</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Shown on PDF/HTML when an invoice does not set its own payment terms. Per-invoice terms from the
+                    invoice form always override these.
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <label className={labelClass} htmlFor="pt-section-title">
+                        Section title
+                      </label>
+                      <input
+                        id="pt-section-title"
+                        className={fieldClass}
+                        value={String(footer?.paymentTerms ?? '')}
+                        onChange={(e) => patch(['labels', 'footer', 'paymentTerms'], e.target.value)}
+                        placeholder="Payment Terms"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass} htmlFor="pt-bullets">
+                        Terms (one line per bullet)
+                      </label>
+                      <textarea
+                        id="pt-bullets"
+                        className={fieldClass + ' min-h-[120px] font-mono text-xs'}
+                        value={defaultPaymentTermsBullets.join('\n')}
+                        onChange={(e) =>
+                          patch(
+                            ['defaultPaymentTermsBullets'],
+                            e.target.value
+                              .split('\n')
+                              .map((l) => l.trim())
+                              .filter((l) => l.length > 0)
+                          )
+                        }
+                        placeholder="One bullet per line"
+                      />
+                    </div>
+                  </div>
+                </div>
 
                 <div>
                   <label className={labelClass}>Declaration</label>

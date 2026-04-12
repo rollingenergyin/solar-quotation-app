@@ -102,7 +102,7 @@ export default function PaymentTerms({ quoteNumber, config, pageNumber = 9, tota
               {/* Share of project value (percentage only) */}
               <div className="text-right flex-shrink-0">
                 <p
-                  className="text-xl font-bold"
+                  className="text-xl font-bold tabular-nums"
                   style={{
                     color: idx < 2 ? '#6690cc' : '#161c34',
                     fontFamily: 'Poppins, sans-serif',

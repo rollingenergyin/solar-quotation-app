@@ -6,11 +6,19 @@ import { useEffect } from 'react';
 import AdminSidebar from '@/components/AdminSidebar';
 import FinanceSidebar from '@/components/FinanceSidebar';
 
+/** Prefer Next pathname; if missing (hydration quirks), read window every render so route never stays blank */
+function useResolvedPathname(): string {
+  const pathname = usePathname();
+  if (pathname && pathname.length > 0) return pathname;
+  if (typeof window !== 'undefined') return window.location.pathname;
+  return '';
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading, isAuthenticated } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
-  const isFinanceRoute = pathname?.startsWith('/admin/finance');
+  const routePath = useResolvedPathname();
+  const isFinanceRoute = routePath.startsWith('/admin/finance');
 
   const hasAdminAccess = isAuthenticated && user?.role === 'ADMIN';
   const hasFinanceAccess = isAuthenticated && (user?.role === 'ADMIN' || user?.role === 'FINANCE');
@@ -19,14 +27,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!isLoading && !allowed) {
-      router.replace(isFinanceRoute ? '/login' : '/login');
+      router.replace('/login');
     }
-  }, [isLoading, allowed, isFinanceRoute, router]);
+  }, [isLoading, allowed, router]);
 
-  if (isLoading || !allowed) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <span className="text-gray-500">Loading…</span>
+      </div>
+    );
+  }
+
+  if (!allowed) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-2 bg-gray-50 px-4 text-center">
+        <span className="text-gray-600">You don&apos;t have access to this area.</span>
+        <span className="text-sm text-gray-500">Redirecting to login…</span>
       </div>
     );
   }

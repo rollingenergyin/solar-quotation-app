@@ -1,9 +1,15 @@
 'use client';
 
-import { Fragment, useState, useCallback, useEffect, useRef } from 'react';
+import { Fragment, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { api } from '@/lib/api';
 import BillAttachmentCell from './BillAttachmentCell';
 import type { LinkedFinanceBill } from './BillAttachmentCell';
+import {
+  ProjectSiteSelect,
+  displayProjectSiteLabel,
+  type FinanceProjectRow,
+  type SiteRow,
+} from './projectSiteSelect';
 
 function arrayMove<T>(arr: T[], from: number, to: number): T[] {
   const next = [...arr];
@@ -16,6 +22,104 @@ const fmt = (n: number) => '₹' + n.toLocaleString('en-IN');
 const fmtDate = (s: string) =>
   new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
+/** Match Order column: stacked small buttons; shell uses translucent tint per tag type */
+const orderBtnBase =
+  'leading-none px-1.5 py-0.5 rounded border text-[10px] font-bold disabled:opacity-30 disabled:cursor-not-allowed w-9 min-h-[22px]';
+
+function InvoiceTagStack({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: 'INV' | 'NO_INV' | null | undefined;
+  onChange: (next: 'INV' | 'NO_INV' | null) => void;
+  disabled?: boolean;
+}) {
+  const v = value ?? null;
+  return (
+    <div
+      className="flex flex-col items-center gap-0.5 rounded border border-emerald-400/35 bg-emerald-500/[0.12] px-0.5 py-0.5"
+      title="Invoice: INV or NO INV"
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label="Tag as INV"
+        aria-pressed={v === 'INV'}
+        onClick={() => onChange(v === 'INV' ? null : 'INV')}
+        className={`${orderBtnBase} ${
+          v === 'INV'
+            ? 'border-emerald-500/70 bg-emerald-500/35 text-emerald-950 shadow-sm'
+            : 'border-gray-200/90 bg-white/70 text-gray-700 hover:bg-white'
+        }`}
+      >
+        INV
+      </button>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label="Tag as NO INV"
+        aria-pressed={v === 'NO_INV'}
+        onClick={() => onChange(v === 'NO_INV' ? null : 'NO_INV')}
+        className={`${orderBtnBase} ${
+          v === 'NO_INV'
+            ? 'border-amber-500/70 bg-amber-500/30 text-amber-950 shadow-sm'
+            : 'border-gray-200/90 bg-white/70 text-gray-700 hover:bg-white'
+        }`}
+      >
+        NO
+      </button>
+    </div>
+  );
+}
+
+function BillUploadTagStack({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: 'UPLOADED' | 'NOT_UPLOADED' | null | undefined;
+  onChange: (next: 'UPLOADED' | 'NOT_UPLOADED' | null) => void;
+  disabled?: boolean;
+}) {
+  const v = value ?? null;
+  return (
+    <div
+      className="flex flex-col items-center gap-0.5 rounded border border-sky-400/35 bg-sky-500/[0.12] px-0.5 py-0.5"
+      title="Bill upload: UP or NO UP"
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label="Tag as uploaded"
+        aria-pressed={v === 'UPLOADED'}
+        onClick={() => onChange(v === 'UPLOADED' ? null : 'UPLOADED')}
+        className={`${orderBtnBase} ${
+          v === 'UPLOADED'
+            ? 'border-emerald-500/70 bg-emerald-500/30 text-emerald-950 shadow-sm'
+            : 'border-gray-200/90 bg-white/70 text-gray-700 hover:bg-white'
+        }`}
+      >
+        UP
+      </button>
+      <button
+        type="button"
+        disabled={disabled}
+        aria-label="Tag as not uploaded"
+        aria-pressed={v === 'NOT_UPLOADED'}
+        onClick={() => onChange(v === 'NOT_UPLOADED' ? null : 'NOT_UPLOADED')}
+        className={`${orderBtnBase} ${
+          v === 'NOT_UPLOADED'
+            ? 'border-rose-500/70 bg-rose-500/25 text-rose-950 shadow-sm'
+            : 'border-gray-200/90 bg-white/70 text-gray-700 hover:bg-white'
+        }`}
+      >
+        NO
+      </button>
+    </div>
+  );
+}
+
 export interface TxSplit {
   id: string;
   amount: number;
@@ -26,6 +130,8 @@ export interface TxSplit {
   site?: { id: string; name: string } | null;
   purchaseBill?: LinkedFinanceBill | null;
   salesBill?: LinkedFinanceBill | null;
+  invoiceStatus?: 'INV' | 'NO_INV' | null;
+  billUploadStatus?: 'UPLOADED' | 'NOT_UPLOADED' | null;
 }
 
 export interface BankTx {
@@ -39,10 +145,14 @@ export interface BankTx {
   partyName: string | null;
   referenceNo: string | null;
   manualOverride: boolean;
+  /** Present on API payload even when `site` join is null */
+  siteId?: string | null;
   site?: { id: string; name: string } | null;
   splits?: TxSplit[];
   purchaseBill?: LinkedFinanceBill | null;
   salesBill?: LinkedFinanceBill | null;
+  invoiceStatus?: 'INV' | 'NO_INV' | null;
+  billUploadStatus?: 'UPLOADED' | 'NOT_UPLOADED' | null;
 }
 
 interface Props {
@@ -50,13 +160,68 @@ interface Props {
   transactions: BankTx[];
   setTransactions: React.Dispatch<React.SetStateAction<BankTx[]>>;
   categories: { id: string; name: string }[];
-  sites: { id: string; name: string }[];
+  sites: SiteRow[];
+  /** Finance projects (linked to sites); drives project labels in the Project column */
+  projects: FinanceProjectRow[];
   onTotalsRefresh: () => void;
   onTransactionsRefresh: () => void;
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   /** Recycle-bin view: row reordering disabled */
   disableDrag?: boolean;
+  /** When set with category filter, split rows show only matching lines; totals use those amounts only. */
+  categoryFilterMode?: 'all' | 'include' | 'exclude';
+  selectedCategoryIdsList?: readonly string[];
+  filterCategory?: string;
+}
+
+type CategoryFilterState =
+  | { kind: 'none' }
+  | { kind: 'include'; ids: Set<string> }
+  | { kind: 'exclude'; ids: Set<string> };
+
+function buildCategoryFilterState(
+  mode: 'all' | 'include' | 'exclude',
+  selectedIds: readonly string[],
+  filterCategory: string,
+  categoryRows: { id: string; name: string }[]
+): CategoryFilterState {
+  const fc = filterCategory.trim();
+  if (fc) {
+    const byId = categoryRows.find((c) => c.id === fc);
+    const byName = categoryRows.find((c) => c.name === fc);
+    const id = byId?.id ?? byName?.id ?? fc;
+    return { kind: 'include', ids: new Set([id]) };
+  }
+  if (mode === 'include' && selectedIds.length > 0) {
+    return { kind: 'include', ids: new Set(selectedIds) };
+  }
+  if (mode === 'exclude' && selectedIds.length > 0) {
+    return { kind: 'exclude', ids: new Set(selectedIds) };
+  }
+  return { kind: 'none' };
+}
+
+/** For split txns under a category filter: only matching split lines and their sum for display/totals. */
+function splitAmountsForCategoryFilter(
+  t: BankTx,
+  cf: CategoryFilterState
+): { splits: TxSplit[]; scopedAmount: number } {
+  if (cf.kind === 'none') {
+    return { splits: t.splits ?? [], scopedAmount: t.amount };
+  }
+  if (!t.isSplit) {
+    return { splits: [], scopedAmount: t.amount };
+  }
+  const splits = t.splits ?? [];
+  if (cf.kind === 'include') {
+    const filtered = splits.filter((s) => cf.ids.has(s.categoryId));
+    const sum = filtered.reduce((a, s) => a + Number(s.amount), 0);
+    return { splits: filtered, scopedAmount: sum };
+  }
+  const filtered = splits.filter((s) => !cf.ids.has(s.categoryId));
+  const sum = filtered.reduce((a, s) => a + Number(s.amount), 0);
+  return { splits: filtered, scopedAmount: sum };
 }
 
 function evenSplitAmounts(total: number, n: number): number[] {
@@ -80,17 +245,44 @@ export default function BankTransactionsTable({
   setTransactions,
   categories,
   sites,
+  projects,
   onTotalsRefresh,
   onTransactionsRefresh,
   selectedIds,
   onToggleSelect,
   disableDrag = false,
+  categoryFilterMode = 'all',
+  selectedCategoryIdsList = [] as readonly string[],
+  filterCategory = '',
 }: Props) {
   const [inline, setInline] = useState<{ id: string; field: 'partyName' | 'description' } | null>(null);
   const [draft, setDraft] = useState('');
   const [splitErr, setSplitErr] = useState<Record<string, string>>({});
   const partyRef = useRef<HTMLInputElement | null>(null);
   const descRef = useRef<HTMLInputElement | null>(null);
+
+  const categoryFilterState = useMemo(
+    () => buildCategoryFilterState(categoryFilterMode, selectedCategoryIdsList, filterCategory, categories),
+    [categoryFilterMode, selectedCategoryIdsList, filterCategory, categories]
+  );
+
+  const listTotals = useMemo(() => {
+    let totalDebit = 0;
+    let totalCredit = 0;
+    for (const t of transactions) {
+      const { scopedAmount } = splitAmountsForCategoryFilter(t, categoryFilterState);
+      if (t.type === 'EXPENSE') totalDebit += scopedAmount;
+      else if (t.type === 'INCOME') totalCredit += scopedAmount;
+    }
+    const net = totalCredit - totalDebit;
+    return {
+      totalDebit,
+      totalCredit,
+      net,
+      parentRowCount: transactions.length,
+      filterActive: categoryFilterState.kind !== 'none',
+    };
+  }, [transactions, categoryFilterState]);
 
   useEffect(() => {
     const el = inline?.field === 'partyName' ? partyRef.current : descRef.current;
@@ -156,6 +348,21 @@ export default function BankTransactionsTable({
   const handleSiteChange = async (t: BankTx, siteId: string | null) => {
     if (t.isSplit) return;
     await patchTx(t.id, { siteId: siteId || null });
+  };
+
+  const handleInvoiceTagChange = async (t: BankTx, raw: '' | 'INV' | 'NO_INV') => {
+    if (t.isSplit) return;
+    const invoiceStatus = raw === '' ? null : raw;
+    await patchTx(t.id, { invoiceStatus });
+  };
+
+  const handleBillUploadTagChange = async (
+    t: BankTx,
+    raw: '' | 'UPLOADED' | 'NOT_UPLOADED'
+  ) => {
+    if (t.isSplit) return;
+    const billUploadStatus = raw === '' ? null : raw;
+    await patchTx(t.id, { billUploadStatus });
   };
 
   const defaultCategoryId = categories[0]?.id ?? '';
@@ -253,6 +460,66 @@ export default function BankTransactionsTable({
     saveSplitsRaw(t, payload);
   };
 
+  /** Read split amount inputs in the table and PATCH batch (parent row control). */
+  const saveSplitAmountsBatch = async (t: BankTx) => {
+    const splits = t.splits ?? [];
+    if (splits.length === 0) return;
+    const nodes = document.querySelectorAll<HTMLInputElement>(
+      `input[data-bank-split-txn="${t.id}"][data-split-id]`
+    );
+    const bySplitId = new Map<string, number>();
+    nodes.forEach((el) => {
+      const sid = el.getAttribute('data-split-id');
+      if (!sid) return;
+      const n = parseFloat(el.value);
+      if (!Number.isFinite(n)) return;
+      bySplitId.set(sid, n);
+    });
+    const amounts = splits.map((sp) => ({
+      splitId: sp.id,
+      amount: bySplitId.has(sp.id) ? bySplitId.get(sp.id)! : sp.amount,
+    }));
+    if (amounts.some((a) => !Number.isFinite(a.amount))) {
+      setSplitErr((s) => ({ ...s, [t.id]: 'Enter a valid amount on each split line.' }));
+      return;
+    }
+    const sum = amounts.reduce((s, x) => s + x.amount, 0);
+    if (!sumSplitsOk(t.amount, amounts)) {
+      setSplitErr((s) => ({
+        ...s,
+        [t.id]: `Splits must sum to ${fmt(t.amount)} (now ${fmt(sum)})`,
+      }));
+      return;
+    }
+    try {
+      const updated = await api<TxSplit[]>(`/finance/bank-transactions/${t.id}/split-amounts`, {
+        method: 'PATCH',
+        body: JSON.stringify({ amounts }),
+      });
+      setTransactions((prev) =>
+        prev.map((x) => {
+          if (x.id !== t.id || !x.splits) return x;
+          return {
+            ...x,
+            splits: updated.map((sp) => ({
+              ...sp,
+              category: categories.find((c) => c.id === sp.categoryId) ?? sp.category,
+              site: sp.siteId ? sites.find((si) => si.id === sp.siteId) ?? null : null,
+            })),
+          };
+        })
+      );
+      setSplitErr((s) => ({ ...s, [t.id]: '' }));
+      onTotalsRefresh();
+      onTransactionsRefresh();
+    } catch (err) {
+      setSplitErr((s) => ({
+        ...s,
+        [t.id]: err instanceof Error ? err.message : 'Save amounts failed',
+      }));
+    }
+  };
+
   const clearSplits = async (t: BankTx) => {
     try {
       await api(`/finance/bank-transactions/${t.id}/splits`, { method: 'DELETE' });
@@ -274,6 +541,8 @@ export default function BankTransactionsTable({
           ...(body.description !== undefined ? { description: body.description } : {}),
           ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
           ...(body.siteId !== undefined ? { siteId: body.siteId } : {}),
+          ...(body.invoiceStatus !== undefined ? { invoiceStatus: body.invoiceStatus } : {}),
+          ...(body.billUploadStatus !== undefined ? { billUploadStatus: body.billUploadStatus } : {}),
         }),
       });
       setTransactions((prev) =>
@@ -306,15 +575,10 @@ export default function BankTransactionsTable({
   const deleteSplit = async (t: BankTx, sp: TxSplit) => {
     try {
       await api(`/finance/bank-transactions/${t.id}/splits/${sp.id}`, { method: 'DELETE' });
-      const remaining = (t.splits ?? []).filter((s) => s.id !== sp.id);
-      if (remaining.length === 0) {
-        await clearSplits(t);
-        return;
-      }
-      setTransactions((prev) =>
-        prev.map((x) => (x.id === t.id ? { ...x, splits: remaining } : x))
-      );
+      setSplitErr((s) => ({ ...s, [t.id]: '' }));
       onTotalsRefresh();
+      /** Server merges the removed line’s amount into another split; refetch so UI matches DB. */
+      onTransactionsRefresh();
     } catch (err) {
       setSplitErr((s) => ({
         ...s,
@@ -328,11 +592,26 @@ export default function BankTransactionsTable({
       <table className="w-full text-sm">
         <thead className="bg-gray-50 border-b">
           <tr>
+            <th className="px-1 py-2 w-8 text-center text-xs font-semibold text-gray-600" title="Serial number">
+              Sr.
+            </th>
             <th className="px-0.5 py-2 w-9 text-center text-xs font-semibold text-gray-600" title="Move row">
               Order
             </th>
             <th className="px-2 py-3 w-10">
               <span className="sr-only">Select</span>
+            </th>
+            <th
+              className="px-1.5 py-3 text-left text-xs font-semibold text-emerald-800"
+              title="Invoice tag (GST)"
+            >
+              INV
+            </th>
+            <th
+              className="px-1.5 py-3 text-left text-xs font-semibold text-emerald-800"
+              title="Bill upload reminder"
+            >
+              UP
             </th>
             <th className="px-3 py-3 text-left font-semibold text-gray-700">Date</th>
               <th className="px-3 py-3 text-left font-semibold text-gray-700">Party</th>
@@ -346,9 +625,24 @@ export default function BankTransactionsTable({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {transactions.map((t, rowIndex) => (
+            {transactions.map((t, rowIndex) => {
+              const parentProjectLabel = displayProjectSiteLabel(
+                t.site?.id ?? t.siteId,
+                t.site,
+                sites,
+                projects
+              );
+              const { splits: splitsVisible, scopedAmount } = splitAmountsForCategoryFilter(
+                t,
+                categoryFilterState
+              );
+              const splitFilterActive = categoryFilterState.kind !== 'none' && t.isSplit;
+              return (
               <Fragment key={t.id}>
                 <tr className="hover:bg-gray-50">
+                  <td className="px-1 py-2 align-middle text-center tabular-nums text-xs font-semibold text-gray-600">
+                    {rowIndex + 1}
+                  </td>
                   <td className="px-0.5 py-2 align-middle">
                     <div className="flex flex-col items-center gap-0.5">
                       <button
@@ -377,6 +671,40 @@ export default function BankTransactionsTable({
                       checked={selectedIds.has(t.id)}
                       onChange={() => onToggleSelect(t.id)}
                     />
+                  </td>
+                  <td className="px-0.5 py-2 align-middle">
+                    {!t.isSplit ? (
+                      <InvoiceTagStack
+                        value={t.invoiceStatus}
+                        onChange={(next) =>
+                          handleInvoiceTagChange(t, next === null ? '' : next)
+                        }
+                      />
+                    ) : (
+                      <span
+                        className="flex h-[52px] w-9 items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50/80 text-[10px] font-semibold text-slate-400"
+                        title="Set on each split line"
+                      >
+                        ↓
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-0.5 py-2 align-middle">
+                    {!t.isSplit ? (
+                      <BillUploadTagStack
+                        value={t.billUploadStatus}
+                        onChange={(next) =>
+                          handleBillUploadTagChange(t, next === null ? '' : next)
+                        }
+                      />
+                    ) : (
+                      <span
+                        className="flex h-[52px] w-9 items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50/80 text-[10px] font-semibold text-slate-400"
+                        title="Set on each split line"
+                      >
+                        ↓
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{fmtDate(t.transactionDate)}</td>
                         <td className="px-3 py-3 text-gray-700 align-top">
@@ -439,11 +767,17 @@ export default function BankTransactionsTable({
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-right text-rose-600 font-medium whitespace-nowrap">
-                          {t.type === 'EXPENSE' ? fmt(t.amount) : '—'}
+                        <td
+                          className="px-3 py-3 text-right text-rose-600 font-medium whitespace-nowrap"
+                          title={splitFilterActive ? 'Expense amount for split lines matching the category filter' : undefined}
+                        >
+                          {t.type === 'EXPENSE' ? fmt(scopedAmount) : '—'}
                         </td>
-                        <td className="px-3 py-3 text-right text-emerald-600 font-medium whitespace-nowrap">
-                          {t.type === 'INCOME' ? fmt(t.amount) : '—'}
+                        <td
+                          className="px-3 py-3 text-right text-emerald-600 font-medium whitespace-nowrap"
+                          title={splitFilterActive ? 'Income amount for split lines matching the category filter' : undefined}
+                        >
+                          {t.type === 'INCOME' ? fmt(scopedAmount) : '—'}
                         </td>
                         <td className="px-3 py-3 align-top">
                           <select
@@ -460,20 +794,25 @@ export default function BankTransactionsTable({
                             ))}
                           </select>
                         </td>
-                        <td className="px-3 py-3 align-top">
-                          <select
-                            value={t.site?.id ?? ''}
-                            onChange={(e) => handleSiteChange(t, e.target.value || null)}
-                            disabled={!!t.isSplit}
-                            className="border rounded px-2 py-1 text-xs min-w-[90px] disabled:bg-gray-100"
-                          >
-                            <option value="">—</option>
-                            {sites.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                          </select>
+                        <td className="px-3 py-3 align-top max-w-[260px]">
+                          <div className="flex flex-col gap-1">
+                            {parentProjectLabel !== '—' && (
+                              <span
+                                className="text-xs text-gray-900 leading-snug line-clamp-3"
+                                title={parentProjectLabel}
+                              >
+                                {parentProjectLabel}
+                              </span>
+                            )}
+                            <ProjectSiteSelect
+                              sites={sites}
+                              projects={projects}
+                              valueSiteId={t.site?.id ?? t.siteId ?? null}
+                              onPickSiteId={(siteId) => handleSiteChange(t, siteId)}
+                              disabled={!!t.isSplit}
+                              className="w-full min-w-0 max-w-full text-[10px] py-0.5"
+                            />
+                          </div>
                         </td>
                         <td className="px-3 py-3 align-top">
                           <BillAttachmentCell
@@ -497,13 +836,21 @@ export default function BankTransactionsTable({
                             ) : (
                               <>
                                 <span className="text-xs text-gray-500">Split lines</span>
-                                <div className="flex flex-wrap gap-1">
+                                <div className="flex flex-wrap gap-1 items-center">
                                   <button
                                     type="button"
                                     className="text-xs text-blue-600 hover:underline"
                                     onClick={() => addSplitRow(t)}
                                   >
                                     + Add
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="text-xs font-medium text-emerald-700 hover:underline"
+                                    title="Save all split line amounts (must sum to the row total)"
+                                    onClick={() => saveSplitAmountsBatch(t)}
+                                  >
+                                    Save amounts
                                   </button>
                                   <button
                                     type="button"
@@ -529,10 +876,34 @@ export default function BankTransactionsTable({
                         </td>
                       </tr>
                 {t.isSplit &&
-                  (t.splits ?? []).map((sp) => (
+                  splitsVisible.map((sp) => {
+                    const splitProjectLabel = displayProjectSiteLabel(
+                      sp.siteId,
+                      sp.site,
+                      sites,
+                      projects
+                    );
+                    return (
                     <tr key={sp.id} className="bg-slate-50/80">
                       <td />
                       <td />
+                      <td />
+                      <td className="px-0.5 py-2 align-middle">
+                        <InvoiceTagStack
+                          value={sp.invoiceStatus}
+                          onChange={(next) =>
+                            patchSplit(t, sp, { invoiceStatus: next })
+                          }
+                        />
+                      </td>
+                      <td className="px-0.5 py-2 align-middle">
+                        <BillUploadTagStack
+                          value={sp.billUploadStatus}
+                          onChange={(next) =>
+                            patchSplit(t, sp, { billUploadStatus: next })
+                          }
+                        />
+                      </td>
                       <td />
                         <td colSpan={2} className="px-3 py-2 pl-8 border-l-2 border-blue-300">
                           <span className="text-xs text-gray-500">Split · </span>
@@ -553,6 +924,8 @@ export default function BankTransactionsTable({
                               type="number"
                               step="0.01"
                               key={`a-${sp.id}-${sp.amount}`}
+                              data-bank-split-txn={t.id}
+                              data-split-id={sp.id}
                               defaultValue={sp.amount}
                               onBlur={(e) => {
                                 const n = parseFloat(e.target.value);
@@ -571,6 +944,8 @@ export default function BankTransactionsTable({
                               type="number"
                               step="0.01"
                               key={`c-${sp.id}-${sp.amount}`}
+                              data-bank-split-txn={t.id}
+                              data-split-id={sp.id}
                               defaultValue={sp.amount}
                               onBlur={(e) => {
                                 const n = parseFloat(e.target.value);
@@ -596,19 +971,24 @@ export default function BankTransactionsTable({
                             ))}
                           </select>
                         </td>
-                        <td className="px-3 py-2 align-top">
-                          <select
-                            value={sp.siteId ?? ''}
-                            onChange={(e) => patchSplit(t, sp, { siteId: e.target.value || null })}
-                            className="border rounded px-2 py-1 text-xs min-w-[90px]"
-                          >
-                            <option value="">—</option>
-                            {sites.map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                          </select>
+                        <td className="px-3 py-2 align-top max-w-[260px]">
+                          <div className="flex flex-col gap-1">
+                            {splitProjectLabel !== '—' && (
+                              <span
+                                className="text-xs text-gray-900 leading-snug line-clamp-3"
+                                title={splitProjectLabel}
+                              >
+                                {splitProjectLabel}
+                              </span>
+                            )}
+                            <ProjectSiteSelect
+                              sites={sites}
+                              projects={projects}
+                              valueSiteId={sp.siteId}
+                              onPickSiteId={(siteId) => patchSplit(t, sp, { siteId })}
+                              className="w-full min-w-0 max-w-full text-[10px] py-0.5"
+                            />
+                          </div>
                         </td>
                         <td className="px-3 py-2 align-top">
                           <BillAttachmentCell
@@ -629,10 +1009,44 @@ export default function BankTransactionsTable({
                           </button>
                         </td>
                       </tr>
-                  ))}
+                    );
+                  })}
               </Fragment>
-            ))}
+            );
+            })}
           </tbody>
+          <tfoot className="border-t-2 border-gray-200 bg-gray-50/95">
+            <tr>
+              <td
+                colSpan={8}
+                className="px-3 py-2.5 text-right text-xs font-semibold text-gray-700"
+              >
+                {`Total (${listTotals.parentRowCount} row${
+                  listTotals.parentRowCount === 1 ? '' : 's'
+                }${listTotals.filterActive ? ' · split lines matching category filter' : ''})`}
+              </td>
+              <td className="px-3 py-2.5 text-right text-sm font-bold tabular-nums text-rose-700 whitespace-nowrap">
+                {listTotals.totalDebit > 0 ? fmt(listTotals.totalDebit) : '—'}
+              </td>
+              <td className="px-3 py-2.5 text-right text-sm font-bold tabular-nums text-emerald-700 whitespace-nowrap">
+                {listTotals.totalCredit > 0 ? fmt(listTotals.totalCredit) : '—'}
+              </td>
+              <td colSpan={4} className="px-3 py-2.5 text-left text-xs text-gray-700">
+                <span className="font-medium text-gray-600">Net (credit − debit): </span>
+                <span
+                  className={`font-bold tabular-nums ${
+                    listTotals.net > 0
+                      ? 'text-emerald-800'
+                      : listTotals.net < 0
+                        ? 'text-rose-800'
+                        : 'text-gray-700'
+                  }`}
+                >
+                  {fmt(listTotals.net)}
+                </span>
+              </td>
+            </tr>
+          </tfoot>
         </table>
     </div>
   );

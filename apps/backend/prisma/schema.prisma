@@ -40,6 +40,18 @@ model User {
   auditLogs           AuditLog[]
   quotationTemplates  QuotationTemplate[]
 
+  // Attendance
+  attendancePolicy      AttendancePolicy?
+  attendanceDays        AttendanceDay[]
+  attendanceCorrections AttendanceCorrection[] @relation("AttendanceCorrectionAdmin")
+  leaveRequests         LeaveRequest[]         @relation("LeaveRequestUser")
+  leaveApprovals        LeaveRequest[]         @relation("LeaveRequestApprover")
+  compOffRequests       CompOffRequest[]       @relation("CompOffUser")
+  compOffApprovals      CompOffRequest[]       @relation("CompOffApprover")
+  workflowRequests      WorkflowRequest[]      @relation("WorkflowRequester")
+  workflowApprovals     WorkflowApproval[]     @relation("WorkflowApprover")
+  attendanceNotifications AttendanceNotification[] @relation("AttNotifUser")
+
   @@map("users")
 }
 
@@ -261,6 +273,7 @@ model Quotation {
   systemType        SystemType      @default(DCR)
   siteType          SiteType        @default(RESIDENTIAL)
   sanctionedLoadKw  Float?
+  sanctionedLoadIncreasedToKw Float? @map("sanctioned_load_increased_to_kw") // target load after increase (optional)
   inverterSizeKw    Float?
   validUntil        DateTime?
   totalWattage Float?
@@ -594,6 +607,16 @@ model TransactionCategory {
   @@map("finance_transaction_categories")
 }
 
+enum BankInvoiceTag {
+  INV
+  NO_INV
+}
+
+enum BankBillUploadTag {
+  UPLOADED
+  NOT_UPLOADED
+}
+
 model BankTransaction {
   id                String   @id @default(cuid())
   uploadId          String
@@ -613,6 +636,8 @@ model BankTransaction {
   duplicateOfId     String?  // if duplicate, points to canonical transaction
   processed         Boolean  @default(false)
   manualOverride    Boolean  @default(false)
+  invoiceStatus     BankInvoiceTag? @map("invoice_status")
+  billUploadStatus  BankBillUploadTag? @map("bill_upload_status")
   deletedAt         DateTime? @map("deleted_at")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -636,6 +661,8 @@ model TransactionSplit {
   siteId        String?
   amount        Float
   description   String?
+  invoiceStatus BankInvoiceTag? @map("invoice_status")
+  billUploadStatus BankBillUploadTag? @map("bill_upload_status")
   createdAt     DateTime @default(now())
 
   transaction BankTransaction       @relation(fields: [transactionId], references: [id], onDelete: Cascade)
@@ -765,13 +792,16 @@ model InvoiceTemplate {
   id        String         @id @default(cuid())
   name      String
   slug      String         @unique
-  subtype   InvoiceSubtype @unique
+  subtype   InvoiceSubtype
+  // One active template per subtype — used when creating invoices of that type.
+  isActive  Boolean        @default(false) @map("is_active")
   config    Json
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
   invoices Invoice[]
 
+  @@index([subtype])
   @@map("finance_invoice_templates")
 }
 
@@ -865,4 +895,243 @@ model CashflowSnapshot {
   createdAt       DateTime @default(now())
 
   @@map("finance_cashflow_snapshots")
+}
+
+// ─── Attendance System ──────────────────────────────────────────────────────
+
+enum AttendanceStatus {
+  NONE
+  IN_PROGRESS
+  COMPLETE
+  ABSENT
+  ON_LEAVE
+  HOLIDAY
+}
+
+enum LeaveType {
+  PLANNED
+  EMERGENCY
+  SICK
+  CASUAL
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum CompOffStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  USED
+}
+
+enum WorkflowType {
+  PRICING
+  DISCOUNT
+  COMPLAINT
+  OTHER
+}
+
+enum WorkflowStatus {
+  OPEN
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+model AttendancePolicy {
+  id                   String   @id @default(cuid())
+  // null = global policy; set = per-employee override
+  userId               String?  @unique
+  workStartTime        String   @default("09:30") // HH:mm
+  workEndTime          String   @default("18:30") // HH:mm
+  graceMinutes         Int      @default(15)
+  lateAfterMinutes     Int      @default(30)
+  sundayCompOffAuto    Boolean  @default(true)
+  effectiveFrom        DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_policy")
+}
+
+model AttendanceDay {
+  id           String           @id @default(cuid())
+  userId       String
+  date         String           // YYYY-MM-DD local date
+  status       AttendanceStatus @default(NONE)
+  isLate       Boolean          @default(false)
+  lateMinutes  Int              @default(0)
+  isSunday     Boolean          @default(false)
+  // Daily log — can be filled any time same day (before/after checkout)
+  dailyUpdate  String?
+  tomorrowPlan String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkIn     AttendanceCheckIn?
+  checkOut    AttendanceCheckOut?
+  corrections AttendanceCorrection[]
+  compOff     CompOffRequest?
+
+  @@unique([userId, date])
+  @@index([userId])
+  @@index([date])
+  @@map("attendance_days")
+}
+
+model AttendanceCheckIn {
+  id               String   @id @default(cuid())
+  attendanceDayId  String   @unique
+  capturedAt       DateTime // server UTC
+  clientCapturedAt DateTime?
+  selfieKey        String   // storage key (local disk or S3)
+  selfieHash       String?  // SHA-256 for dedup
+  lat              Float?
+  lng              Float?
+  accuracyM        Float?
+  description      String
+  workLocation     String?  // OFFICE | ON_FIELD
+  deviceInfo       String?
+  syncBatchId      String?  // for offline sync
+  createdAt        DateTime @default(now())
+
+  attendanceDay AttendanceDay @relation(fields: [attendanceDayId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_check_ins")
+}
+
+model AttendanceCheckOut {
+  id               String   @id @default(cuid())
+  attendanceDayId  String   @unique
+  capturedAt       DateTime
+  clientCapturedAt DateTime?
+  selfieKey        String?
+  lat              Float?
+  lng              Float?
+  accuracyM        Float?
+  description      String   // short description at checkout (mandatory)
+  workLocation     String?  // OFFICE | ON_FIELD
+  fullDayUpdate    String?  // detailed update — filled via daily log (optional)
+  nextDayPlan      String?  // tomorrow's plan — filled via daily log (optional)
+  syncBatchId      String?
+  createdAt        DateTime @default(now())
+
+  attendanceDay AttendanceDay @relation(fields: [attendanceDayId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_check_outs")
+}
+
+model AttendanceCorrection {
+  id              String   @id @default(cuid())
+  attendanceDayId String
+  adminId         String
+  fieldChanged    String
+  oldValue        String?
+  newValue        String?
+  reason          String
+  createdAt       DateTime @default(now())
+
+  attendanceDay AttendanceDay @relation(fields: [attendanceDayId], references: [id], onDelete: Cascade)
+  admin         User          @relation("AttendanceCorrectionAdmin", fields: [adminId], references: [id])
+
+  @@index([attendanceDayId])
+  @@map("attendance_corrections")
+}
+
+model LeaveRequest {
+  id                   String      @id @default(cuid())
+  userId               String
+  startDate            String      // YYYY-MM-DD
+  endDate              String      // YYYY-MM-DD
+  type                 LeaveType
+  reason               String
+  status               LeaveStatus @default(PENDING)
+  approverId           String?
+  decidedAt            DateTime?
+  emergencyJustification String?
+  advanceDaysSatisfied Boolean     @default(false)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  user     User  @relation("LeaveRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  approver User? @relation("LeaveRequestApprover", fields: [approverId], references: [id])
+
+  @@index([userId])
+  @@map("leave_requests")
+}
+
+model CompOffRequest {
+  id              String        @id @default(cuid())
+  userId          String
+  workDate        String        // YYYY-MM-DD (Sunday or extra day)
+  attendanceDayId String?       @unique
+  status          CompOffStatus @default(PENDING)
+  approverId      String?
+  decidedAt       DateTime?
+  note            String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user          User           @relation("CompOffUser", fields: [userId], references: [id], onDelete: Cascade)
+  approver      User?          @relation("CompOffApprover", fields: [approverId], references: [id])
+  attendanceDay AttendanceDay? @relation(fields: [attendanceDayId], references: [id])
+
+  @@index([userId])
+  @@map("comp_off_requests")
+}
+
+model WorkflowRequest {
+  id          String         @id @default(cuid())
+  type        WorkflowType
+  requesterId String
+  title       String
+  description String
+  payload     Json?
+  status      WorkflowStatus @default(OPEN)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  requester User               @relation("WorkflowRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  approvals WorkflowApproval[]
+
+  @@index([requesterId])
+  @@map("workflow_requests")
+}
+
+model WorkflowApproval {
+  id         String    @id @default(cuid())
+  requestId  String
+  approverId String
+  decision   String    // APPROVED | REJECTED | COMMENT
+  comment    String?
+  decidedAt  DateTime  @default(now())
+
+  request  WorkflowRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  approver User            @relation("WorkflowApprover", fields: [approverId], references: [id])
+
+  @@map("workflow_approvals")
+}
+
+model AttendanceNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // CHECKIN_REMINDER | LATE | CHECKOUT_REMINDER | MISSING | LEAVE_DECIDED | COMPOFF_DECIDED | WORKFLOW_UPDATE
+  title     String
+  message   String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation("AttNotifUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("attendance_notifications")
 }

@@ -33,12 +33,12 @@ export default function LoginPage() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Login failed';
-      const isNetworkError =
-        /load failed|failed to fetch|network error|timeout/i.test(msg);
-      setError(isNetworkError ? 'Network error. Please try again.' : msg);
-      if (isNetworkError && typeof window !== 'undefined') {
+      const isBackendHint = /Cannot connect to API|Cannot reach the API|Start the API/i.test(msg);
+      const isGenericNetwork =
+        /load failed|failed to fetch|network error|timeout/i.test(msg) && !isBackendHint;
+      setError(isGenericNetwork ? 'Network error. Please try again.' : msg);
+      if (isGenericNetwork && typeof window !== 'undefined') {
         console.error('LOGIN ERROR:', err);
-        alert('Network error. Please try again.');
       }
     } finally {
       setLoading(false);

@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { api, API_URL } from '@/lib/api';
+import { ProjectSiteSelect, type FinanceProjectRow, type SiteRow } from './projectSiteSelect';
 
 type BankUpload = { id: string; fileName: string; _count: { transactions: number } };
 type Cat = { id: string; name: string };
-type Site = { id: string; name: string };
 
 type SplitRow = { categoryId: string; siteId: string; amount: string; description: string };
 
@@ -22,6 +22,7 @@ export default function AddTransactionModal({
   uploads,
   categories,
   sites,
+  projects,
   selectedUploadId,
   sortDate,
   disabled,
@@ -31,7 +32,8 @@ export default function AddTransactionModal({
   onClose: () => void;
   uploads: BankUpload[];
   categories: Cat[];
-  sites: Site[];
+  sites: SiteRow[];
+  projects: FinanceProjectRow[];
   selectedUploadId: string;
   sortDate: 'asc' | 'desc';
   disabled?: boolean;
@@ -321,19 +323,15 @@ export default function AddTransactionModal({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
-                <select
-                  value={siteId}
-                  onChange={(e) => setSiteId(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                  disabled={disabled}
-                >
-                  <option value="">—</option>
-                  {sites.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full [&_select]:w-full [&_select]:max-w-none [&_select]:rounded-lg [&_select]:px-3 [&_select]:py-2 [&_select]:text-sm">
+                  <ProjectSiteSelect
+                    sites={sites}
+                    projects={projects}
+                    valueSiteId={siteId || null}
+                    onPickSiteId={(sid) => setSiteId(sid ?? '')}
+                    disabled={disabled}
+                  />
+                </div>
               </div>
             </>
           )}
@@ -377,22 +375,18 @@ export default function AddTransactionModal({
                   </div>
                   <div className="sm:col-span-4">
                     <label className="block text-xs text-gray-600 mb-0.5">Project</label>
-                    <select
-                      value={row.siteId}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setSplitRows((prev) => prev.map((r, i) => (i === idx ? { ...r, siteId: v } : r)));
-                      }}
-                      className="w-full border rounded px-2 py-1 text-sm"
-                      disabled={disabled}
-                    >
-                      <option value="">—</option>
-                      {sites.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="w-full [&_select]:w-full [&_select]:max-w-none [&_select]:text-sm">
+                      <ProjectSiteSelect
+                        sites={sites}
+                        projects={projects}
+                        valueSiteId={row.siteId || null}
+                        onPickSiteId={(sid) => {
+                          const v = sid ?? '';
+                          setSplitRows((prev) => prev.map((r, i) => (i === idx ? { ...r, siteId: v } : r)));
+                        }}
+                        disabled={disabled}
+                      />
+                    </div>
                   </div>
                   <div className="sm:col-span-1 flex justify-end">
                     {splitRows.length > 2 && (

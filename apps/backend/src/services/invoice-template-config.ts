@@ -6,7 +6,24 @@ import type { InvoiceBrandConfig } from './invoice-branding.js';
 
 export const INVOICE_TEMPLATE_VERSION = 1 as const;
 
+/** When invoice data has no HSN, SPGS layout uses this (matches legacy HTML default). */
+export const DEFAULT_INVOICE_HSN = '995464';
+
 export type CompanyNameFormat = 'uppercase' | 'as_is';
+
+/** Palette for SPGS invoice layout (borders + shaded areas). */
+export interface InvoiceTemplateBrandColors {
+  primary: string;
+  accent: string;
+  /** Inner grid / table cell borders (defaults to accent). */
+  innerLine?: string;
+  /** Outer box border around the invoice body (defaults to accent). */
+  outerLine?: string;
+  /** Background of the strip under “Tax invoice” (default #f5f8fc). */
+  stripFill?: string;
+  /** Product table header, GST table header, footer section titles (default #eef4fb). */
+  tableHeaderFill?: string;
+}
 
 /** Seller-side text shown on the PDF; merged over env branding when set. */
 export interface InvoiceTemplateSellerOverride {
@@ -31,8 +48,10 @@ export interface InvoiceTemplateConfigV1 {
   seller?: InvoiceTemplateSellerOverride;
   branding: {
     fontFamily: string;
-    colors: { primary: string; accent: string };
+    colors: InvoiceTemplateBrandColors;
     companyNameFormat: CompanyNameFormat;
+    /** When false, no logo image is shown (letterhead text only). Default true. */
+    showLogo?: boolean;
     /** When set, overrides filesystem logo in PDF */
     logoDataUrl?: string | null;
   };
@@ -167,6 +186,23 @@ export interface InvoiceTemplateConfigV1 {
       stateTax: string;
     };
   };
+  /**
+   * Default payment terms (one bullet per string) when the invoice omits `paymentTermsBullets`.
+   * Used in PDF/HTML and the template preview. Falls back to env branding if empty or missing.
+   */
+  defaultPaymentTermsBullets?: string[];
+  /**
+   * Optional HSN/SAC overrides on the PDF. If a field is empty, falls back to the previous step
+   * (invoice line item `hsnSac`, then {@link DEFAULT_INVOICE_HSN}).
+   */
+  hsnCodes?: {
+    /** Main SPGS line in the product table */
+    lineMain?: string | null;
+    /** GST summary: blended single row, or EPC first band (70% taxable) */
+    gstRow1?: string | null;
+    /** EPC GST second band (30% taxable); for blended layout gstRow1 is used for the only row */
+    gstRow2?: string | null;
+  };
 }
 
 function deepMerge<T extends Record<string, unknown>>(base: T, patch: unknown): T {
@@ -201,8 +237,13 @@ export function createDefaultInvoiceTemplateConfig(): InvoiceTemplateConfigV1 {
       colors: {
         primary: '#161c34',
         accent: '#6690cc',
+        innerLine: '#6690cc',
+        outerLine: '#6690cc',
+        stripFill: '#f5f8fc',
+        tableHeaderFill: '#eef4fb',
       },
       companyNameFormat: 'uppercase',
+      showLogo: true,
       logoDataUrl: null,
     },
     visibility: {
@@ -233,6 +274,11 @@ export function createDefaultInvoiceTemplateConfig(): InvoiceTemplateConfigV1 {
       },
     },
     extraTableRows: [],
+    defaultPaymentTermsBullets: [
+      'Payment as per agreed commercial terms and milestone schedule.',
+      'GST charged as per applicable law; input tax credit as per eligibility.',
+      'Overdue amounts may attract interest at 18% p.a. or as agreed in writing.',
+    ],
     labels: {
       strip: {
         gstinPrefix: 'GSTIN :',
@@ -343,6 +389,19 @@ export function mergeInvoiceTemplateConfig(partial: unknown): InvoiceTemplateCon
     return def;
   }
   return deepMerge(def as unknown as Record<string, unknown>, partial) as unknown as InvoiceTemplateConfigV1;
+}
+
+/** Resolved HSN/SAC for each place on the SPGS invoice (after template + invoice fallbacks). */
+export function resolveTemplateHsnCodes(
+  tm: InvoiceTemplateConfigV1,
+  invoiceHsnFromData?: string | null
+): { lineMain: string; gstRow1: string; gstRow2: string } {
+  const base = invoiceHsnFromData?.trim() || DEFAULT_INVOICE_HSN;
+  const H = tm.hsnCodes;
+  const lineMain = H?.lineMain?.trim() || base;
+  const gstRow1 = H?.gstRow1?.trim() || lineMain;
+  const gstRow2 = H?.gstRow2?.trim() || gstRow1;
+  return { lineMain, gstRow1, gstRow2 };
 }
 
 /** Merge template seller overrides onto env branding for PDF/HTML output. */

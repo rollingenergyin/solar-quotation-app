@@ -155,6 +155,8 @@ export default function QuickQuotationPage() {
   const [electricityRate, setElectricityRate]     = useState('18');
   const [peakSunHours, setPeakSunHours]           = useState('4');
   const [sanctionedLoadKw, setSanctionedLoadKw]   = useState('');
+  const [sanctionedLoadIncreasedToKw, setSanctionedLoadIncreasedToKw] = useState('');
+  const [sanctionedLoadIncreasedToManual, setSanctionedLoadIncreasedToManual] = useState(false);
 
   // ── Form state
   const [submitting, setSubmitting] = useState(false);
@@ -248,6 +250,16 @@ export default function QuickQuotationPage() {
     }
   }, [derivedSystemKw]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // "Sanctioned load to be increased to" defaults to proposed system kW (unless user changed it)
+  useEffect(() => {
+    if (sanctionedLoadIncreasedToManual) return;
+    if (derivedSystemKw > 0) {
+      setSanctionedLoadIncreasedToKw(String(derivedSystemKw));
+    } else {
+      setSanctionedLoadIncreasedToKw('');
+    }
+  }, [derivedSystemKw, sanctionedLoadIncreasedToManual]);
+
   // ── Live summary ─────────────────────────────────────────────────────────
 
   const summary = useMemo(() => computeLive(
@@ -285,7 +297,15 @@ export default function QuickQuotationPage() {
         pricePerWatt: effectivePricePerWatt,
         electricityRatePerUnit: parseFloat(electricityRate) || 18,
         peakSunHours: parseFloat(peakSunHours) || 4,
-        sanctionedLoadKw: sanctionedLoadKw ? parseFloat(sanctionedLoadKw) : undefined,
+        sanctionedLoadKw:
+          sanctionedLoadKw.trim() !== '' && Number.isFinite(parseFloat(sanctionedLoadKw))
+            ? parseFloat(sanctionedLoadKw)
+            : undefined,
+        sanctionedLoadIncreasedToKw:
+          sanctionedLoadIncreasedToKw.trim() !== '' &&
+          Number.isFinite(parseFloat(sanctionedLoadIncreasedToKw))
+            ? parseFloat(sanctionedLoadIncreasedToKw)
+            : undefined,
       };
 
       const res = await api<{ quotationId: string; quoteNumber: string }>('/quotations/quick', {
@@ -500,6 +520,9 @@ export default function QuickQuotationPage() {
 
           {/* ── Section 4: Pricing ─────────────────────────────────────── */}
           <FormCard title="4. Pricing" icon="💰">
+            <p className="text-xs text-gray-500 mb-3">
+              Enter any one of the three — the other two update (GST 8.9% on base, same as quick-quote calculation).
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <FieldLabel required>Base Price per Watt (₹/W)</FieldLabel>
@@ -594,12 +617,33 @@ export default function QuickQuotationPage() {
                     step="0.5"
                     placeholder="e.g. 5"
                     value={sanctionedLoadKw}
-                    onChange={e => setSanctionedLoadKw(e.target.value)}
+                    onChange={(e) => setSanctionedLoadKw(e.target.value)}
                     className={`${inputCls} text-right tabular-nums`}
                   />
                   <span className="text-sm text-gray-400 whitespace-nowrap">kW</span>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">Optional — used to assess load sufficiency</p>
+              </div>
+              <div>
+                <FieldLabel>Sanctioned load to be increased to (kW)</FieldLabel>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder={derivedSystemKw > 0 ? String(derivedSystemKw) : '—'}
+                    value={sanctionedLoadIncreasedToKw}
+                    onChange={(e) => {
+                      setSanctionedLoadIncreasedToManual(true);
+                      setSanctionedLoadIncreasedToKw(e.target.value);
+                    }}
+                    className={`${inputCls} text-right tabular-nums`}
+                  />
+                  <span className="text-sm text-gray-400 whitespace-nowrap">kW</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Defaults to the proposed system size; change if the target sanctioned load after upgrade should differ.
+                </p>
               </div>
             </div>
             <p className="text-xs text-gray-400 mt-3">

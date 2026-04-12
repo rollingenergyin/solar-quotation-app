@@ -347,6 +347,7 @@ router.get('/:id/template-data', templateDataAuth, async (req: Request, res: Res
 
       // Sanctioned load
       sanctionedLoadKw: q.sanctionedLoadKw ?? null,
+      sanctionedLoadIncreasedToKw: q.sanctionedLoadIncreasedToKw ?? null,
 
       // Depreciation data from active template
       depreciationTable: activeTemplate?.depreciationTable ?? [
@@ -484,6 +485,7 @@ router.post(
         gstPct = 8.9,
         emiRatePct = 9,
         sanctionedLoadKw,
+        sanctionedLoadIncreasedToKw,
         notes,
       } = req.body;
 
@@ -521,6 +523,13 @@ router.post(
             systemType,
             siteType,
             sanctionedLoadKw: sanctionedLoadKw ? parseFloat(sanctionedLoadKw) : null,
+            sanctionedLoadIncreasedToKw:
+              sanctionedLoadIncreasedToKw !== undefined &&
+              sanctionedLoadIncreasedToKw !== null &&
+              String(sanctionedLoadIncreasedToKw).trim() !== '' &&
+              Number.isFinite(parseFloat(String(sanctionedLoadIncreasedToKw)))
+                ? parseFloat(String(sanctionedLoadIncreasedToKw))
+                : null,
             inverterSizeKw: (inverterSizeKw != null && parseFloat(inverterSizeKw) > 0)
               ? parseFloat(inverterSizeKw) : parseFloat(systemSizeKw),
           },
@@ -566,6 +575,13 @@ router.post(
                 systemType,
                 siteType,
                 sanctionedLoadKw: sanctionedLoadKw ? parseFloat(sanctionedLoadKw) : null,
+                sanctionedLoadIncreasedToKw:
+                  sanctionedLoadIncreasedToKw !== undefined &&
+                  sanctionedLoadIncreasedToKw !== null &&
+                  String(sanctionedLoadIncreasedToKw).trim() !== '' &&
+                  Number.isFinite(parseFloat(String(sanctionedLoadIncreasedToKw)))
+                    ? parseFloat(String(sanctionedLoadIncreasedToKw))
+                    : null,
               },
             })) as object,
           },
@@ -649,6 +665,7 @@ router.post(
     body('systemType').optional().isIn(['DCR', 'NON_DCR']).withMessage('systemType must be DCR or NON_DCR'),
     body('siteType').optional().isIn(['RESIDENTIAL', 'SOCIETY', 'COMMERCIAL', 'INDUSTRIAL']).withMessage('siteType must be RESIDENTIAL, SOCIETY, COMMERCIAL, or INDUSTRIAL'),
     body('sanctionedLoadKw').optional().isFloat({ min: 0 }),
+    body('sanctionedLoadIncreasedToKw').optional().isFloat({ min: 0 }),
     body('inverterSizeKw').optional().isFloat({ min: 0.5 }),
   ],
   async (req: Request, res: Response, next: NextFunction) => {
@@ -660,6 +677,11 @@ router.post(
       const updateData: Record<string, unknown> = {};
       if (req.body.sanctionedLoadKw !== undefined) {
         updateData.sanctionedLoadKw = parseFloat(req.body.sanctionedLoadKw) || null;
+      }
+      if (req.body.sanctionedLoadIncreasedToKw !== undefined) {
+        const v = req.body.sanctionedLoadIncreasedToKw;
+        updateData.sanctionedLoadIncreasedToKw =
+          v === null || v === '' ? null : parseFloat(String(v)) || null;
       }
       if (req.body.inverterSizeKw !== undefined) {
         updateData.inverterSizeKw = parseFloat(req.body.inverterSizeKw) || null;
@@ -705,6 +727,7 @@ router.post(
           systemType: req.body.systemType,
           siteType: req.body.siteType,
           sanctionedLoadKw: req.body.sanctionedLoadKw,
+          sanctionedLoadIncreasedToKw: req.body.sanctionedLoadIncreasedToKw,
           gridInflationPct: req.body.gridInflationPct,
           peakSunHours: req.body.peakSunHours,
           systemEfficiency: req.body.systemEfficiency,

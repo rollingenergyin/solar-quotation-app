@@ -105,6 +105,8 @@ export interface QuotationTemplateData {
   inverterSizeKw: number;
   areaSquareFt: number;
   sanctionedLoadKw: number | null;
+  /** Target sanctioned load after increase (optional; e.g. aligned with proposed system kW). */
+  sanctionedLoadIncreasedToKw?: number | null;
 
   // Production
   dailyProductionKwh: number;

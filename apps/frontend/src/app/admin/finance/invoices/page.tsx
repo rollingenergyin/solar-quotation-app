@@ -1,25 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { downloadFinanceInvoicePdf } from '@/lib/pdf-download';
+import { BulkInvoiceUploadModal } from './BulkInvoiceUploadModal';
 
 function downloadPdf(id: string) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  fetch(`/api/finance/invoices/${id}/pdf`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    credentials: 'include',
-  })
-    .then((r) => r.blob())
-    .then((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `invoice-${id.slice(-8)}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    })
-    .catch(() => {});
+  void downloadFinanceInvoicePdf(id).catch(() => {});
 }
 
 interface Invoice {
@@ -32,7 +20,15 @@ interface Invoice {
   invoiceNumber?: string | null;
   invoiceDate?: string | null;
   deletedAt?: string | null;
+  templateId?: string | null;
+  template?: { id: string; name: string; subtype?: string } | null;
   client: { name: string };
+}
+
+interface InvoiceTemplateOption {
+  id: string;
+  name: string;
+  subtype: string;
 }
 
 const fmt = (n: number) => '₹' + n.toLocaleString('en-IN');
@@ -70,6 +66,11 @@ function documentMetaFromItems(items: unknown): { invoiceNumber?: string; invoic
   return o.documentMeta && typeof o.documentMeta === 'object' ? o.documentMeta : {};
 }
 
+function isInvoiceEditableV2(items: unknown): boolean {
+  if (!items || typeof items !== 'object' || Array.isArray(items)) return false;
+  return (items as { version?: number }).version === 2;
+}
+
 type ViewMode = 'active' | 'trash';
 
 export default function InvoicesPage() {
@@ -77,16 +78,20 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [mainKindFilter, setMainKindFilter] = useState<string>('');
   const [subtypeFilter, setSubtypeFilter] = useState<string>('');
+  const [templateFilter, setTemplateFilter] = useState<string>('');
+  const [invoiceTemplates, setInvoiceTemplates] = useState<InvoiceTemplateOption[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('active');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
 
-  useEffect(() => {
+  const loadInvoices = useCallback(() => {
     setError(null);
     const params = new URLSearchParams();
     if (viewMode === 'trash') params.set('trashed', '1');
     if (mainKindFilter) params.set('mainKind', mainKindFilter);
     if (subtypeFilter) params.set('subtype', subtypeFilter);
+    if (templateFilter) params.set('templateId', templateFilter);
     const path = `/finance/invoices${params.toString() ? `?${params.toString()}` : ''}`;
     setLoading(true);
     api<Invoice[]>(path)
@@ -96,7 +101,17 @@ export default function InvoicesPage() {
         setInvoices([]);
       })
       .finally(() => setLoading(false));
-  }, [mainKindFilter, subtypeFilter, viewMode]);
+  }, [mainKindFilter, subtypeFilter, templateFilter, viewMode]);
+
+  useEffect(() => {
+    api<InvoiceTemplateOption[]>('/finance/invoice-templates')
+      .then(setInvoiceTemplates)
+      .catch(() => setInvoiceTemplates([]));
+  }, []);
+
+  useEffect(() => {
+    loadInvoices();
+  }, [loadInvoices]);
 
   const moveToTrash = async (id: string) => {
     if (!window.confirm('Move this invoice to the recycle bin? You can restore it later.')) return;
@@ -138,6 +153,7 @@ export default function InvoicesPage() {
       if (viewMode === 'trash') params.set('trashed', '1');
       if (mainKindFilter) params.set('mainKind', mainKindFilter);
       if (subtypeFilter) params.set('subtype', subtypeFilter);
+      if (templateFilter) params.set('templateId', templateFilter);
       const path = `/finance/invoices${params.toString() ? `?${params.toString()}` : ''}`;
       const list = await api<Invoice[]>(path);
       setInvoices(list);
@@ -206,7 +222,10 @@ export default function InvoicesPage() {
           </select>
           <select
             value={subtypeFilter}
-            onChange={(e) => setSubtypeFilter(e.target.value)}
+            onChange={(e) => {
+              setSubtypeFilter(e.target.value);
+              setTemplateFilter('');
+            }}
             className="border rounded-lg px-3 py-2 text-sm"
           >
             <option value="">All subtypes</option>
@@ -214,13 +233,38 @@ export default function InvoicesPage() {
             <option value="SERVICE">Service</option>
             <option value="PRODUCT">Product</option>
           </select>
+          <select
+            value={templateFilter}
+            onChange={(e) => setTemplateFilter(e.target.value)}
+            className="border rounded-lg px-3 py-2 text-sm max-w-[200px]"
+            title="Filter by invoice template / category"
+          >
+            <option value="">All templates</option>
+            {(subtypeFilter
+              ? invoiceTemplates.filter((t) => t.subtype === subtypeFilter)
+              : invoiceTemplates
+            ).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
           {viewMode === 'active' && (
-            <Link
-              href="/admin/finance/invoices/new"
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium"
-            >
-              + New Invoice
-            </Link>
+            <>
+              <button
+                type="button"
+                onClick={() => setBulkModalOpen(true)}
+                className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-800 text-sm font-medium hover:bg-gray-50"
+              >
+                Bulk Upload Invoices
+              </button>
+              <Link
+                href="/admin/finance/invoices/new"
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium"
+              >
+                + New Invoice
+              </Link>
+            </>
           )}
         </div>
       </div>
@@ -245,6 +289,7 @@ export default function InvoicesPage() {
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Date</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Kind</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Subtype</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Category</th>
                   <th className="px-4 py-3 text-left font-semibold text-gray-700">Client</th>
                   <th className="px-4 py-3 text-right font-semibold text-gray-700">Amount</th>
                   {viewMode === 'trash' && (
@@ -269,6 +314,9 @@ export default function InvoicesPage() {
                       <td className="px-4 py-3 text-gray-600">{docDate}</td>
                       <td className="px-4 py-3 font-medium text-gray-800">{mainKindLabel(i.mainKind)}</td>
                       <td className="px-4 py-3 font-medium text-gray-700">{i.subtype}</td>
+                      <td className="px-4 py-3 text-gray-600 text-xs max-w-[160px] truncate" title={i.template?.name ?? ''}>
+                        {i.template?.name ?? '—'}
+                      </td>
                       <td className="px-4 py-3 text-gray-600">{i.client?.name ?? '—'}</td>
                       <td className="px-4 py-3 text-right font-medium">{fmt(i.totalAmount)}</td>
                       {viewMode === 'trash' && (
@@ -283,6 +331,14 @@ export default function InvoicesPage() {
                           >
                             PDF
                           </button>
+                          {viewMode === 'active' && isInvoiceEditableV2(i.items) && (
+                            <Link
+                              href={`/admin/finance/invoices/${i.id}/edit`}
+                              className="text-slate-700 hover:text-slate-900 text-sm font-medium"
+                            >
+                              Edit
+                            </Link>
+                          )}
                           {viewMode === 'active' &&
                             convertTargets(i.mainKind).map((opt) => (
                               <button
@@ -334,6 +390,12 @@ export default function InvoicesPage() {
           )}
         </div>
       )}
+
+      <BulkInvoiceUploadModal
+        open={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        onSuccess={() => loadInvoices()}
+      />
     </div>
   );
 }

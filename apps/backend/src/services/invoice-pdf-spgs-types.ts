@@ -30,4 +30,8 @@ export interface SpgsPdfInput {
   annexures: { label: string; fileName?: string }[];
   /** HSN/SAC for the single turnkey line (default applied in PDF) */
   hsnSac?: string;
+  /** Override footer section title (default: template / "Payment Terms") */
+  paymentTermsHeading?: string;
+  /** Override payment term lines (default: company branding bullets) */
+  paymentTermsBullets?: string[];
 }

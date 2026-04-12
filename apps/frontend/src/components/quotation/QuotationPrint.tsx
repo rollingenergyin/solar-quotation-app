@@ -79,6 +79,8 @@ export default function QuotationPrint({ data, isPdfMode = false, quotationId }:
     emi5YrTotalPayable, emi5YrTotalInterest,
     emi7YrTotalPayable, emi7YrTotalInterest,
     materials, gridInflationPct,
+    sanctionedLoadKw,
+    sanctionedLoadIncreasedToKw,
     templateConfig,
     showSubsidy, showDepreciation, systemType, siteType,
     depreciationTable, depreciationNote,
@@ -182,7 +184,8 @@ export default function QuotationPrint({ data, isPdfMode = false, quotationId }:
           savings30YrRs={savings30YrRs}
           breakevenYears={breakevenYears}
           netCost={netCost}
-          sanctionedLoadKw={data.sanctionedLoadKw}
+          sanctionedLoadKw={sanctionedLoadKw}
+          sanctionedLoadIncreasedToKw={sanctionedLoadIncreasedToKw}
         />
 
         {/* Page 6 — Bill of Materials */}
@@ -233,7 +236,6 @@ export default function QuotationPrint({ data, isPdfMode = false, quotationId }:
         {/* Page 9 (DCR) / 10 (Non-DCR) — Payment Terms */}
         <PaymentTerms
           quoteNumber={quoteNumber}
-          netCost={netCost}
           config={templateConfig}
           pageNumber={9 + d}
           totalPages={totalPages}

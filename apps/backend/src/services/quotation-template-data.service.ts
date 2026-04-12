@@ -150,6 +150,7 @@ export async function getQuotationTemplateData(quotationId: string): Promise<Quo
     showSubsidy: q.systemType !== 'NON_DCR' && (q.siteType === 'RESIDENTIAL' || q.siteType === 'SOCIETY'),
     showDepreciation: q.systemType === 'NON_DCR' && (q.siteType === 'COMMERCIAL' || q.siteType === 'INDUSTRIAL'),
     sanctionedLoadKw: q.sanctionedLoadKw ?? null,
+    sanctionedLoadIncreasedToKw: q.sanctionedLoadIncreasedToKw ?? null,
     depreciationTable: activeTemplate?.depreciationTable ?? [
       { year: 'Year 1', rate: '40%', note: 'WDV accelerated depreciation' },
       { year: 'Year 2', rate: '24%', note: '40% on remaining 60%' },

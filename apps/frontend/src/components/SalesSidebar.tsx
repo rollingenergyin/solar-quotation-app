@@ -11,6 +11,7 @@ const navItems = [
   { href: '/sales/customers',        label: 'Customers',      icon: '👥' },
   { href: '/sales/quotations',       label: 'My Quotations',  icon: '📋' },
   { href: '/sales/quick-quotation',  label: 'Quick Quote',    icon: '⚡' },
+  { href: '/attendance',             label: 'Attendance',     icon: '⏱' },
   { href: '/sales/profile',          label: 'Profile',       icon: '👤' },
 ];
 

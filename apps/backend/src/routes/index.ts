@@ -12,6 +12,7 @@ import quotationsRoutes from './quotations.routes.js';
 import templatesRoutes from './templates.routes.js';
 import paramsRoutes from './params.routes.js';
 import financeRoutes from './finance.routes.js';
+import attendanceRoutes from './attendance.routes.js';
 
 const router = Router();
 
@@ -28,6 +29,7 @@ router.use('/quotations', quotationsRoutes);
 router.use('/templates', templatesRoutes);
 router.use('/params', paramsRoutes);
 router.use('/finance', financeRoutes);
+router.use('/attendance', attendanceRoutes);
 
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

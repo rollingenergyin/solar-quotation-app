@@ -13,10 +13,9 @@ import {
   mainPerLabel,
   mergeInvoiceTemplateConfig,
   mergeSellerBranding,
+  resolveTemplateHsnCodes,
   totalQtyUnitLabel,
 } from '../invoice-template-config.js';
-
-const DEFAULT_HSN = '995464';
 
 function escapeHtml(s: string): string {
   return s
@@ -95,11 +94,17 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
   const bEff = mergeSellerBranding(b, tm);
   const prim = tm.branding.colors.primary;
   const acc = tm.branding.colors.accent;
+  const innerLine = tm.branding.colors.innerLine ?? acc;
+  const outerLine = tm.branding.colors.outerLine ?? acc;
+  const stripFill = tm.branding.colors.stripFill ?? '#f5f8fc';
+  const tableHeaderFill = tm.branding.colors.tableHeaderFill ?? '#eef4fb';
   const L = tm.labels;
   const V = tm.visibility;
   const Tv = tm.visibility.table;
   const effectiveLogo =
     logoDataUrl ?? (tm.branding.logoDataUrl?.trim() ? tm.branding.logoDataUrl : undefined);
+  const showLogo = tm.branding.showLogo !== false;
+  const logoForHeader = showLogo ? effectiveLogo : undefined;
   const base = data.computed.baseExclGst;
   const cgst = data.computed.cgst;
   const sgst = data.computed.sgst;
@@ -108,7 +113,7 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
   const watts = data.computed.watts;
   const ratePerW = data.computed.perWattDerived;
   const epc = data.computed.epc;
-  const hsn = data.hsnSac?.trim() || DEFAULT_HSN;
+  const { lineMain: hsnLine, gstRow1: hsnGst1, gstRow2: hsnGst2 } = resolveTemplateHsnCodes(tm, data.hsnSac);
   const kw = data.systemSizeKw;
   const roundOff = roundOffDelta(total, base, gstTotal);
   const panelMake = data.panelMake?.trim();
@@ -156,7 +161,7 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
     bodyRows += `<tr>
     <td class="cen"></td>
     <td class="desc"><strong>${escapeHtml(L.lineItems.mainDescription)}</strong></td>
-    <td class="cen">${escapeHtml(hsn)}</td>
+    <td class="cen">${escapeHtml(hsnLine)}</td>
     <td class="cen">1</td>
     <td class="num">${mainRate}</td>
     <td class="cen">${perMain}</td>
@@ -350,7 +355,7 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
   </thead>
   <tbody>
     <tr>
-      <td class="cen">${escapeHtml(hsn)}</td>
+      <td class="cen">${escapeHtml(hsnGst1)}</td>
       <td class="num">${fmtNum(portion70)}</td>
       <td class="cen">${escapeHtml(G.epc.cgstRate1)}</td>
       <td class="num">${fmtNum(epcR.cgst1)}</td>
@@ -359,7 +364,7 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
       <td class="num">${fmtNum(epcR.g1)}</td>
     </tr>
     <tr>
-      <td class="cen">${escapeHtml(hsn)}</td>
+      <td class="cen">${escapeHtml(hsnGst2)}</td>
       <td class="num">${fmtNum(portion30)}</td>
       <td class="cen">${escapeHtml(G.epc.cgstRate2)}</td>
       <td class="num">${fmtNum(epcR.cgst2)}</td>
@@ -401,7 +406,7 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
   </thead>
   <tbody>
     <tr>
-      <td class="cen">${escapeHtml(hsn)}</td>
+      <td class="cen">${escapeHtml(hsnGst1)}</td>
       <td class="num">${fmtNum(base)}</td>
       <td class="cen">${base > 0 ? `${((cgst / base) * 100).toFixed(2)}%` : '—'}</td>
       <td class="num">${fmtNum(cgst)}</td>
@@ -442,6 +447,14 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
   const cssFont =
     tm.branding.fontFamily.replace(/[;{}<>]/g, '').trim() || 'Arial, Helvetica, sans-serif';
   const FG = L.footer;
+  const paymentTermsHeadingResolved =
+    data.paymentTermsHeading?.trim() || FG.paymentTerms;
+  const paymentTermsBulletsResolved =
+    data.paymentTermsBullets && data.paymentTermsBullets.length > 0
+      ? data.paymentTermsBullets
+      : tm.defaultPaymentTermsBullets && tm.defaultPaymentTermsBullets.length > 0
+        ? tm.defaultPaymentTermsBullets
+        : bEff.paymentTermsBullets;
   const TH = L.tableHead;
 
   let customerGridRows = '';
@@ -518,8 +531,8 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
   <style>
     * { box-sizing: border-box; }
     :root {
-      --inv-line: ${acc};
-      --inv-line-thin: 0.75px solid ${acc};
+      --inv-line: ${outerLine};
+      --inv-line-thin: 0.75px solid ${innerLine};
     }
     body {
       font-family: ${cssFont};
@@ -571,7 +584,7 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
       border-collapse: collapse;
       border-top: var(--inv-line-thin);
       border-bottom: var(--inv-line-thin);
-      background: #f5f8fc;
+      background: ${stripFill};
       margin-bottom: 4px;
     }
     .strip-tbl td { padding: 5px 6px; border: none; }
@@ -608,7 +621,7 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
     table.inv thead th {
       font-weight: 700;
       text-align: center;
-      background: #eef4fb;
+      background: ${tableHeaderFill};
       color: ${prim};
     }
     .desc { text-align: left; }
@@ -637,7 +650,7 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
     table.inv-tax-summary thead th {
       font-weight: 700;
       text-align: center;
-      background: #eef4fb;
+      background: ${tableHeaderFill};
       color: ${prim};
     }
     table.inv-tax-summary .num { text-align: right; }
@@ -676,7 +689,7 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
       border-collapse: collapse;
     }
     .footer-left-stack th.footer-section-h {
-      background: #eef4fb;
+      background: ${tableHeaderFill};
       color: ${prim};
       font-weight: 700;
       text-align: center;
@@ -803,11 +816,11 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
         <tr>
           <td style="width:62%">
             ${
-              effectiveLogo
+              logoForHeader
                 ? `<table class="header-left" cellspacing="0" cellpadding="0">
               <tr>
                 <td class="header-logo-cell">
-                  <img src="${effectiveLogo}" alt="" class="header-logo-img" />
+                  <img src="${logoForHeader}" alt="" class="header-logo-img" />
                 </td>
                 <td>
                   <div class="co-name-allcaps">${companyNameDisplay}</div>
@@ -975,12 +988,12 @@ export function buildSpgsInvoiceHtmlDocument(ctx: SpgsInvoiceHtmlContext): strin
                 ? `<div class="footer-section-keep">
               <table class="footer-left-stack" cellspacing="0" cellpadding="0" width="100%">
                 <tr>
-                  <th class="footer-section-h">${escapeHtml(FG.paymentTerms)}</th>
+                  <th class="footer-section-h">${escapeHtml(paymentTermsHeadingResolved)}</th>
                 </tr>
                 <tr>
                   <td class="footer-section-c">
                     <ol class="footer-pt-list">
-                      ${bEff.paymentTermsBullets.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}
+                      ${paymentTermsBulletsResolved.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}
                     </ol>
                   </td>
                 </tr>

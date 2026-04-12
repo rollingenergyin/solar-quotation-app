@@ -29,6 +29,9 @@ export interface SpgsFormState {
   blendedGstPercent: number;
   splitPortion12: number;
   splitPortion18: number;
+  /** PDF footer — optional; defaults from company / template */
+  paymentTermsHeading: string;
+  paymentTermsText: string;
 }
 
 export interface SpgsPreview {
@@ -265,6 +268,35 @@ export function SpgsInvoiceEditor({
               </span>
             </div>
           </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        eyebrow="PDF footer"
+        title="Payment terms"
+        description="Optional. Leave blank to use your company default. Set a custom heading and one bullet per line."
+      >
+        <div className="space-y-4">
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Section heading</span>
+            <input
+              type="text"
+              className={`${inputClass} mt-1`}
+              value={spgs.paymentTermsHeading}
+              onChange={(e) => setSpgs((s) => ({ ...s, paymentTermsHeading: e.target.value }))}
+              placeholder="e.g. Payment Terms"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Terms (one per line)</span>
+            <textarea
+              rows={5}
+              className={`${inputClass} mt-1 font-mono text-xs`}
+              value={spgs.paymentTermsText}
+              onChange={(e) => setSpgs((s) => ({ ...s, paymentTermsText: e.target.value }))}
+              placeholder={'Line 1\nLine 2'}
+            />
+          </label>
         </div>
       </SectionCard>
 

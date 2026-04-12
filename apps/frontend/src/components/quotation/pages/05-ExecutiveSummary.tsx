@@ -18,6 +18,7 @@ interface Props {
   breakevenYears: number;
   netCost: number;
   sanctionedLoadKw?: number | null;
+  sanctionedLoadIncreasedToKw?: number | null;
 }
 
 const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -58,7 +59,7 @@ const Card = ({
 export default function ExecutiveSummary({
   quoteNumber, systemSizeKw, inverterSizeKw, numModules, areaSquareFt, dailyProductionKwh,
   monthlyProductionKwh, annualProductionKwh, monthlySavingsRs, annualSavingsRs,
-  savings30YrRs, breakevenYears, netCost, sanctionedLoadKw,
+  savings30YrRs, breakevenYears, netCost, sanctionedLoadKw, sanctionedLoadIncreasedToKw,
 }: Props) {
   const loadSufficient = sanctionedLoadKw != null ? systemSizeKw <= sanctionedLoadKw : null;
   return (
@@ -119,28 +120,64 @@ export default function ExecutiveSummary({
         </div>
 
         {/* Sanctioned Load Assessment */}
-        {sanctionedLoadKw != null && (
+        {(sanctionedLoadKw != null || sanctionedLoadIncreasedToKw != null) && (
           <div
             className="mb-4 rounded-xl px-5 py-3 flex items-start gap-3"
             style={{
-              background: loadSufficient ? '#f0fdf4' : '#fffbeb',
-              border: `1px solid ${loadSufficient ? '#bbf7d0' : '#fde68a'}`,
+              background:
+                sanctionedLoadKw != null
+                  ? loadSufficient
+                    ? '#f0fdf4'
+                    : '#fffbeb'
+                  : '#f8fafc',
+              border: `1px solid ${
+                sanctionedLoadKw != null
+                  ? loadSufficient
+                    ? '#bbf7d0'
+                    : '#fde68a'
+                  : '#e2e8f0'
+              }`,
             }}
           >
-            <span className="text-lg mt-0.5">{loadSufficient ? '✅' : '⚠️'}</span>
+            <span className="text-lg mt-0.5">
+              {sanctionedLoadKw != null ? (loadSufficient ? '✅' : '⚠️') : 'ℹ️'}
+            </span>
             <div>
-              <p className="text-xs font-semibold mb-1" style={{ color: loadSufficient ? '#166534' : '#92400e' }}>
+              <p
+                className="text-xs font-semibold mb-1"
+                style={{
+                  color:
+                    sanctionedLoadKw != null
+                      ? loadSufficient
+                        ? '#166534'
+                        : '#92400e'
+                      : '#475569',
+                }}
+              >
                 Sanctioned Load Assessment
               </p>
-              <div className="grid grid-cols-2 gap-x-8 text-xs" style={{ color: loadSufficient ? '#14532d' : '#78350f' }}>
-                <p>Present Sanctioned Load: <strong>{sanctionedLoadKw} kW</strong></p>
-                <p>Proposed Solar System: <strong>{systemSizeKw} kW</strong></p>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs" style={{ color: '#334155' }}>
+                {sanctionedLoadKw != null && (
+                  <p>
+                    Present Sanctioned Load: <strong>{sanctionedLoadKw} kW</strong>
+                  </p>
+                )}
+                <p>
+                  Proposed Solar System: <strong>{systemSizeKw} kW</strong>
+                </p>
+                {sanctionedLoadIncreasedToKw != null && (
+                  <p className={sanctionedLoadKw != null ? 'col-span-2' : ''}>
+                    Sanctioned load to be increased to: <strong>{sanctionedLoadIncreasedToKw} kW</strong>
+                  </p>
+                )}
               </div>
-              <p className="text-xs mt-1 font-medium" style={{ color: loadSufficient ? '#15803d' : '#b45309' }}>
-                {loadSufficient
-                  ? 'The present sanctioned load is sufficient for the proposed solar installation.'
-                  : 'The present sanctioned load may need to be increased to support the proposed solar installation.'}
-              </p>
+              {sanctionedLoadKw != null && (
+                <p className="text-xs mt-1 font-medium" style={{ color: loadSufficient ? '#15803d' : '#b45309' }}>
+                  {loadSufficient
+                    ? 'The present sanctioned load is sufficient for the proposed solar installation.'
+                    : 'The present sanctioned load may need to be increased to support the proposed solar installation.'}
+                </p>
+              )}
             </div>
           </div>
         )}

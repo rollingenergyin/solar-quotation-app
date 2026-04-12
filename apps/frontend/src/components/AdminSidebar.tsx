@@ -15,6 +15,7 @@ const navItems = [
   { href: '/admin/pricing', label: 'Weekly Pricing', icon: '₹' },
   { href: '/admin/formulas', label: 'Formulas', icon: 'ƒ' },
   { href: '/admin/templates', label: 'Quote Template', icon: '📄' },
+  { href: '/admin/attendance', label: 'Attendance', icon: '⏱' },
   { href: '/admin/audit', label: 'Audit Logs', icon: '⊙' },
 ];
 
