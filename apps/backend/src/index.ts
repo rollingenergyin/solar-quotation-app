@@ -34,6 +34,36 @@ app.use(errorHandler);
 
 app.listen(config.port, async () => {
   console.log(`Backend running on http://localhost:${config.port}`);
+
+  // Ensure DB schema is up to date regardless of migration history state.
+  // These are idempotent (IF NOT EXISTS / IF EXISTS) so they're safe to run
+  // on every startup and won't fail if the column already exists.
+  try {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "quotations"
+        ADD COLUMN IF NOT EXISTS "sanctioned_load_increased_to_kw" DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS "inverterSizeKw" DOUBLE PRECISION,
+        ADD COLUMN IF NOT EXISTS "quotationDataJson" JSONB,
+        ADD COLUMN IF NOT EXISTS "generatedPdfPath" TEXT,
+        ADD COLUMN IF NOT EXISTS "parentQuotationId" TEXT,
+        ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1;
+    `);
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "quotation_sequence" (
+        "id" TEXT NOT NULL DEFAULT 'main',
+        "nextValue" INTEGER NOT NULL DEFAULT 1,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
+        CONSTRAINT "quotation_sequence_pkey" PRIMARY KEY ("id")
+      );
+    `);
+    await prisma.$disconnect();
+    console.log('[DB] Schema columns verified.');
+  } catch (err) {
+    console.error('[DB] Schema fix warning (non-fatal):', err);
+  }
+
   try {
     const { ensureDefaultTemplates } = await import('./services/default-templates.service.js');
     await ensureDefaultTemplates();

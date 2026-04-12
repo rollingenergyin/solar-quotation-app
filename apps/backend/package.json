@@ -9,7 +9,6 @@
     "typecheck": "./node_modules/.bin/tsc --noEmit",
     "tsc:version": "./node_modules/.bin/tsc --version",
     "build": "node -e \"const tsV=require('./node_modules/typescript/package.json').version; const rV=(()=>{try{return require('./node_modules/@types/react/package.json').version;}catch(e){try{return require('@types/react/package.json').version;}catch(e2){return 'NOT_FOUND';}}})(); console.log('--- Build env ---'); console.log('Node:', process.version); console.log('Platform:', process.platform); console.log('TypeScript (resolved):', tsV); console.log('@types/react (resolved):', rV); if(tsV!=='5.6.3'){console.error('FATAL: expected TypeScript 5.6.3, got '+tsV); process.exit(1);} if(!rV.startsWith('18.2.')){console.error('FATAL: expected @types/react 18.2.x, got '+rV); process.exit(1);}\" && ./node_modules/.bin/tsc --version && npx prisma generate && ./node_modules/.bin/tsc",
-    "prestart": "npx prisma migrate deploy",
     "start": "node dist/index.js",
     "db:generate": "npx prisma generate",
     "db:migrate": "npx prisma migrate dev",
