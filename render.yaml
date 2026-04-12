@@ -2,7 +2,31 @@
 # https://docs.render.com/blueprint-spec
 
 services:
-  # Frontend (Next.js)
+  # ─── Backend (Express + TypeScript) ───────────────────────────────────────
+  # rootDir is set to apps/backend so all npm commands run inside that folder.
+  # npm install picks up .npmrc (include=dev) which forces devDependencies to
+  # be installed even though Render sets NODE_ENV=production during the build.
+  # This ensures TypeScript 5.6.3 (devDep) is available for `tsc`.
+  - type: web
+    name: solar-quotation-backend
+    runtime: node
+    rootDir: apps/backend
+
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: "production"
+      # Set these in the Render dashboard (secrets):
+      # - key: DATABASE_URL
+      #   sync: false
+      # - key: JWT_SECRET
+      #   sync: false
+
+  # ─── Frontend (Next.js) ───────────────────────────────────────────────────
   - type: web
     name: solar-quotation-frontend
     runtime: node

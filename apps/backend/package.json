@@ -6,7 +6,9 @@
   "scripts": {
     "predev": "prisma generate",
     "dev": "tsx watch src/index.ts",
-    "build": "prisma generate && tsc",
+    "typecheck": "tsc --noEmit",
+    "tsc:version": "tsc --version",
+    "build": "node -e \"console.log('--- Build env ---'); console.log('Node:', process.version); console.log('Platform:', process.platform);\" && tsc --version && prisma generate && tsc",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -61,6 +63,6 @@
     "@types/react-dom": "^18.3.1",
     "prisma": "^5.22.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "5.6.3"
   }
 }
