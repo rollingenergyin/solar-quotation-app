@@ -14,6 +14,10 @@ import paramsRoutes from './params.routes.js';
 import financeRoutes from './finance.routes.js';
 import attendanceRoutes from './attendance.routes.js';
 import dashboardRoutes from './dashboard.routes.js';
+import crmRoutes from './crm.routes.js';
+import automationRoutes from './automation.routes.js';
+import messageTemplatesRoutes from './message-templates.routes.js';
+import campaignsRoutes from './campaigns.routes.js';
 
 const router = Router();
 
@@ -32,6 +36,10 @@ router.use('/params', paramsRoutes);
 router.use('/finance', financeRoutes);
 router.use('/attendance', attendanceRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/crm', crmRoutes);
+router.use('/automation', automationRoutes);
+router.use('/crm-templates', messageTemplatesRoutes);
+router.use('/campaigns', campaignsRoutes);
 
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

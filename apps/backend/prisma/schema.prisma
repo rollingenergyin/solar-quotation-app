@@ -51,6 +51,7 @@ model User {
   workflowRequests      WorkflowRequest[]      @relation("WorkflowRequester")
   workflowApprovals     WorkflowApproval[]     @relation("WorkflowApprover")
   attendanceNotifications AttendanceNotification[] @relation("AttNotifUser")
+  crmLeads                CrmLead[]                @relation("CrmLeadAssignee")
 
   @@map("users")
 }
@@ -1134,4 +1135,303 @@ model AttendanceNotification {
 
   @@index([userId])
   @@map("attendance_notifications")
+}
+
+// ─── Solar Growth OS ─────────────────────────────────────────────────────────
+
+// ── Phase 1: CRM State Machine ───────────────────────────────────────────────
+
+enum CrmStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  SITE_VISIT_SCHEDULED
+  SITE_VISIT_DONE
+  PROPOSAL_SENT
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+  DISQUALIFIED
+}
+
+enum LeadSource {
+  MANUAL
+  WHATSAPP
+  SHEET_IMPORT
+  API
+  WEBSITE
+  REFERRAL
+  CAMPAIGN
+}
+
+enum LeadLanguage {
+  EN
+  HI
+  MR
+}
+
+model CrmLead {
+  id           String       @id @default(cuid())
+  phone        String       @unique
+  phoneHash    String       @unique
+  email        String?
+  name         String
+  source       LeadSource   @default(MANUAL)
+  language     LeadLanguage @default(EN)
+  stage        CrmStage     @default(NEW)
+  score        Int          @default(0)
+  assignedToId String?
+  customerId   String?      // link to existing Customer once converted
+  metadata     Json         @default("{}")
+  notes        String?
+  city         String?
+  state        String?
+  systemKw     Float?       // desired system size
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  assignedTo   User?           @relation("CrmLeadAssignee", fields: [assignedToId], references: [id])
+  events       CrmLeadEvent[]
+  score_record CrmLeadScore?
+  conversations CrmConversation[]
+  campaignEnrollments CampaignEnrollment[]
+
+  @@index([stage])
+  @@index([assignedToId])
+  @@index([source])
+  @@index([score])
+  @@map("crm_leads")
+}
+
+model CrmLeadEvent {
+  id          String   @id @default(cuid())
+  leadId      String
+  eventType   String   // LEAD_CREATED | STAGE_CHANGED | MESSAGE_SENT | SCORE_UPDATED | NOTE_ADDED | etc.
+  fromStage   String?
+  toStage     String?
+  actor       String   // user_id | 'system' | 'automation:{rule_id}'
+  payload     Json     @default("{}")
+  createdAt   DateTime @default(now())
+
+  lead        CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt(sort: Desc)])
+  @@index([eventType, createdAt(sort: Desc)])
+  @@map("crm_lead_events")
+}
+
+model CrmLeadScore {
+  leadId          String   @id
+  score           Int      @default(0)
+  recencyScore    Int      @default(0)
+  engagementScore Int      @default(0)
+  fitScore        Int      @default(0)
+  calculatedAt    DateTime @default(now())
+
+  lead            CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@map("crm_lead_scores")
+}
+
+// ── Phase 2: Automation Engine ───────────────────────────────────────────────
+
+model AutomationRule {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  trigger     Json     // { "event": "lead.stage_changed", "filter": { "toStage": "CONTACTED" } }
+  conditions  Json     @default("[]") // [{ "field": "lead.score", "op": "gte", "value": 50 }]
+  actions     Json     // [{ "type": "send_whatsapp", "templateId": "...", "delayMinutes": 0 }]
+  loopGuard   Int      @default(1)  // max executions per lead per 24h
+  priority    Int      @default(0)  // lower = runs first
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  executions  AutomationExecution[]
+
+  @@map("automation_rules")
+}
+
+model AutomationExecution {
+  id             String   @id @default(cuid())
+  ruleId         String
+  leadId         String
+  triggerEventId String
+  status         String   @default("PENDING") // PENDING | RUNNING | DONE | FAILED | SKIPPED
+  attempts       Int      @default(0)
+  result         Json     @default("{}")
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  rule           AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, leadId, triggerEventId]) // idempotency key
+  @@index([leadId])
+  @@index([status])
+  @@map("automation_executions")
+}
+
+// ── Phase 3: Multilingual Templates ─────────────────────────────────────────
+
+model MessageTemplate {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  category    String   // welcome | follow_up | proposal | payment_reminder | qualification
+  channel     String   // whatsapp | email | sms | voice
+  contentEn   String
+  contentHi   String?
+  contentMr   String?
+  variables   String[] @default([]) // ['name', 'kw_size', 'price']
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category, channel])
+  @@map("message_templates")
+}
+
+// ── Phase 4: Communication Engine ────────────────────────────────────────────
+
+model CrmConversation {
+  id            String   @id @default(cuid())
+  leadId        String
+  channel       String   // whatsapp | email | sms
+  lastMessageAt DateTime?
+  context       Json     @default("[]")  // last 20 messages for AI context
+  intent        String?  // current detected intent
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  lead          CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages      CrmMessage[]
+
+  @@unique([leadId, channel])
+  @@map("crm_conversations")
+}
+
+model CrmMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  direction      String   // INBOUND | OUTBOUND
+  channel        String
+  content        String
+  language       String   @default("en")
+  status         String   @default("SENT") // SENT | DELIVERED | READ | FAILED
+  externalId     String?  // WhatsApp message ID / email ID
+  metadata       Json     @default("{}")
+  sentAt         DateTime @default(now())
+
+  conversation   CrmConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, sentAt(sort: Desc)])
+  @@map("crm_messages")
+}
+
+// ── Phase 5: Sheet Ingestion ──────────────────────────────────────────────────
+
+model SheetImport {
+  id          String   @id @default(cuid())
+  filename    String
+  totalRows   Int      @default(0)
+  imported    Int      @default(0)
+  duplicates  Int      @default(0)
+  failed      Int      @default(0)
+  status      String   @default("PENDING") // PENDING | PROCESSING | DONE | FAILED
+  errorReport Json     @default("[]")
+  importedBy  String
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@map("sheet_imports")
+}
+
+// ── Phase 6: Campaign Engine ──────────────────────────────────────────────────
+
+enum CampaignType {
+  BROADCAST
+  DRIP
+  BEHAVIORAL
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+model Campaign {
+  id           String         @id @default(cuid())
+  name         String
+  type         CampaignType
+  status       CampaignStatus @default(DRAFT)
+  channel      String         // whatsapp | email | sms
+  targetFilter Json           @default("{}") // { "stage": "PROPOSAL_SENT", "score_gte": 40 }
+  templateId   String?
+  scheduledAt  DateTime?
+  sentCount    Int            @default(0)
+  openCount    Int            @default(0)
+  replyCount   Int            @default(0)
+  createdBy    String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  steps        DripStep[]
+  enrollments  CampaignEnrollment[]
+
+  @@index([status, scheduledAt])
+  @@map("campaigns")
+}
+
+model DripStep {
+  id          String   @id @default(cuid())
+  campaignId  String
+  stepNumber  Int
+  delayDays   Int
+  templateId  String
+  createdAt   DateTime @default(now())
+
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, stepNumber])
+  @@map("drip_steps")
+}
+
+model CampaignEnrollment {
+  id          String   @id @default(cuid())
+  campaignId  String
+  leadId      String
+  currentStep Int      @default(0)
+  nextSendAt  DateTime?
+  status      String   @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED | UNSUBSCRIBED | STOPPED
+  stoppedAt   DateTime?
+  stopReason  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead        CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, leadId])
+  @@index([status, nextSendAt])
+  @@map("campaign_enrollments")
+}
+
+// ── Phase 8: Analytics Engine ─────────────────────────────────────────────────
+
+model AnalyticsSnapshot {
+  id        String   @id @default(cuid())
+  date      DateTime // truncated to date
+  metric    String   // leads_created | stage_conversions | messages_sent | campaign_sent
+  dimension String?  // source | stage | channel | rep_id | campaign_id
+  value     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([date, metric, dimension])
+  @@index([date, metric])
+  @@map("analytics_snapshots")
 }

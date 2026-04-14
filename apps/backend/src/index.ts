@@ -49,4 +49,29 @@ app.listen(config.port, async () => {
   } catch (err) {
     console.error('[Default Templates] Failed to ensure default templates:', err);
   }
+
+  // Solar Growth OS — start automation engine + event bus worker
+  try {
+    const { startAutomationEngine } = await import('./services/crm/automation-engine.service.js');
+    startAutomationEngine();
+  } catch (err) {
+    console.error('[Automation] Failed to start:', err);
+  }
+
+  try {
+    const { startEventWorker } = await import('./services/crm/event-bus.service.js');
+    await startEventWorker();
+  } catch (err) {
+    console.error('[EventBus] Worker start warning (non-fatal):', err);
+  }
+
+  // Drip campaign tick — every 60 seconds
+  setInterval(async () => {
+    try {
+      const { processDripTick } = await import('./services/crm/campaign-engine.service.js');
+      await processDripTick();
+    } catch (err) {
+      console.error('[DripTick] Error:', err);
+    }
+  }, 60_000);
 });
