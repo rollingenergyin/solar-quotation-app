@@ -1,79 +1,158 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import RollingEnergyLogo from '@/components/quotation/RollingEnergyLogo';
+import { useAuth } from '@/contexts/AuthContext';
+import LeadListPanel, { type Lead } from '@/components/sales/LeadListPanel';
+import LeadDetailPanel from '@/components/sales/LeadDetailPanel';
+import SmartSuggestions from '@/components/sales/SmartSuggestions';
 
-export default function SalesDashboard() {
-  const [customers, setCustomers] = useState<unknown[]>([]);
+type SalesDashboardData = {
+  leads: Lead[];
+  suggestions: { type: string; message: string; count: number }[];
+};
 
-  useEffect(() => {
-    api<unknown[]>('/customers').then(setCustomers).catch(() => {});
-  }, []);
+export default function SalesWorkspace() {
+  const { user } = useAuth();
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+
+  const { data, isLoading, isError, refetch } = useQuery<SalesDashboardData>({
+    queryKey: ['dashboard', 'sales'],
+    queryFn: () => api<SalesDashboardData>('/dashboard/sales'),
+    refetchInterval: 30_000,
+  });
+
+  const leads = data?.leads ?? [];
+  const suggestions = data?.suggestions ?? [];
+
+  const hotCount = leads.filter((l) => l.priority === 'HOT').length;
+  const newCount = leads.filter((l) => l.priority === 'NEW').length;
+
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  })();
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
-      <div className="flex items-center gap-4 mb-6">
-        <RollingEnergyLogo variant="light" size="md" />
+    <div className="flex flex-col h-[calc(100vh-4rem)] md:h-screen overflow-hidden">
+      {/* Top bar */}
+      <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 bg-white border-b border-gray-100">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-0.5">Sales Dashboard</h1>
-          <p className="text-sm text-gray-500">Rolling Energy — Manage customers, upload bills, and generate quotations.</p>
+          <div className="text-sm text-gray-500">
+            {greeting}{user?.name ? `, ${user.name.split(' ')[0]}` : ''} 👋
+          </div>
+          <div className="flex items-center gap-3 mt-0.5">
+            <h1 className="text-base font-bold text-gray-900">Sales Workspace</h1>
+            {hotCount > 0 && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                {hotCount} hot
+              </span>
+            )}
+            {newCount > 0 && (
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                {newCount} new
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/sales/quick-quotation"
+            className="text-xs font-semibold px-3 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-700 transition-colors"
+          >
+            ⚡ Quick Quote
+          </Link>
+          <Link
+            href="/sales/customers/new"
+            className="text-xs font-semibold px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            + Lead
+          </Link>
         </div>
       </div>
 
-      {/* Quick action cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-        {/* Quick Quotation — featured card */}
-        <Link href="/sales/quick-quotation"
-          className="col-span-1 group rounded-2xl p-6 flex flex-col justify-between cursor-pointer border-0 transition-all hover:scale-[1.02] hover:shadow-xl"
-          style={{ background: 'linear-gradient(135deg, #161c34 0%, #2c4570 100%)' }}
-        >
-          <div>
-            <span className="text-3xl">⚡</span>
-            <h3 className="text-lg font-bold text-white mt-3" style={{ fontFamily: 'Poppins, sans-serif' }}>
-              Quick Quotation
-            </h3>
-            <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.55)' }}>
-              Generate a complete solar proposal in 2 minutes — no detailed data entry required
-            </p>
-          </div>
-          <div className="mt-4 flex items-center gap-2">
-            <span
-              className="text-xs font-semibold px-3 py-1.5 rounded-full"
-              style={{ background: '#6690cc', color: '#fff' }}
-            >
-              Start Quick Quote →
-            </span>
-          </div>
-        </Link>
+      {/* Smart suggestions */}
+      {suggestions.length > 0 && (
+        <div className="flex-shrink-0 px-5 pt-3 pb-0">
+          <SmartSuggestions suggestions={suggestions} />
+        </div>
+      )}
 
-        {/* Stats */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <div className="text-3xl font-bold text-gray-900">{customers.length}</div>
-          <div className="text-sm text-gray-500 mt-1">Total Customers</div>
+      {/* Main two-panel layout */}
+      <div className="flex-1 flex min-h-0">
+        {/* Lead List — left panel (40%) */}
+        <div
+          className={`flex-shrink-0 border-r border-gray-100 bg-white overflow-hidden flex flex-col transition-all duration-200 ${
+            selectedLead ? 'hidden md:flex md:w-[38%] lg:w-[35%]' : 'w-full md:w-[38%] lg:w-[35%]'
+          }`}
+        >
+          {isLoading && (
+            <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
+              Loading leads…
+            </div>
+          )}
+          {isError && (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center">
+              <span className="text-sm text-red-500">Failed to load leads</span>
+              <button
+                onClick={() => refetch()}
+                className="text-xs text-gray-500 underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {!isLoading && !isError && (
+            <LeadListPanel
+              leads={leads}
+              selectedId={selectedLead?.id ?? null}
+              onSelect={setSelectedLead}
+            />
+          )}
         </div>
 
-        {/* New customer */}
-        <Link href="/sales/customers/new"
-          className="bg-white rounded-2xl border border-dashed border-gray-300 shadow-sm p-5 flex flex-col items-center justify-center gap-2 hover:border-yellow-400 hover:bg-yellow-50 transition-all text-center group"
+        {/* Lead Detail — right panel (60%) */}
+        <div
+          className={`flex-1 bg-white overflow-hidden flex flex-col ${
+            !selectedLead ? 'hidden md:flex' : 'flex'
+          }`}
         >
-          <span className="text-2xl">👤</span>
-          <span className="text-sm font-semibold text-gray-700 group-hover:text-yellow-700">+ New Customer</span>
-          <span className="text-xs text-gray-400">Full workflow with bill upload</span>
-        </Link>
-      </div>
-
-      {/* Quick links */}
-      <div className="flex gap-3">
-        <Link href="/sales/customers"
-          className="border border-gray-200 text-gray-700 hover:bg-gray-50 text-sm font-medium px-5 py-2.5 rounded-lg transition-colors">
-          View All Customers
-        </Link>
-        <Link href="/sales/quotations"
-          className="border border-gray-200 text-gray-700 hover:bg-gray-50 text-sm font-medium px-5 py-2.5 rounded-lg transition-colors">
-          Saved Quotations
-        </Link>
+          {selectedLead ? (
+            <LeadDetailPanel
+              lead={selectedLead}
+              onClose={() => setSelectedLead(null)}
+              onRefresh={() => refetch()}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-center p-8 select-none">
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl mb-4">
+                ☀️
+              </div>
+              <p className="text-sm font-medium text-gray-500">Select a lead to view details</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {leads.length} lead{leads.length !== 1 ? 's' : ''} loaded
+              </p>
+              <div className="mt-6 flex gap-3">
+                <Link
+                  href="/sales/customers"
+                  className="text-xs text-gray-500 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50"
+                >
+                  All Customers
+                </Link>
+                <Link
+                  href="/sales/quotations"
+                  className="text-xs text-gray-500 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50"
+                >
+                  Saved Quotations
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

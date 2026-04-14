@@ -1,78 +1,166 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import RollingEnergyLogo from '@/components/quotation/RollingEnergyLogo';
+import { useAuth } from '@/contexts/AuthContext';
+import MetricsRow from '@/components/director/MetricsRow';
+import FunnelChart from '@/components/director/FunnelChart';
+import AlertsPanel from '@/components/director/AlertsPanel';
+import CampaignPerformance from '@/components/director/CampaignPerformance';
 
-interface Stats {
-  materials: number;
-  formulas: number;
-  recent: { id: string; action: string; entity: string; createdAt: string; user: { name: string } }[];
-}
+type DirectorData = {
+  kpis: {
+    revenueThisMonth: number;
+    revenueLastMonth: number;
+    quotationsThisMonth: number;
+    quotationsLastMonth: number;
+    momDelta: number;
+    conversionRate: number;
+    activeLeads: number;
+    totalCustomers: number;
+  };
+  funnel: { stage: string; count: number }[];
+  repStats: {
+    id: string;
+    name: string;
+    totalQuotations: number;
+    wonQuotations: number;
+    conversionRate: number;
+    revenue: number;
+  }[];
+  weeklyTrend: { week: string; count: number }[];
+};
 
-export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
+type AuditLog = {
+  id: string;
+  action: string;
+  entity: string;
+  createdAt: string;
+  user: { name: string };
+};
 
-  useEffect(() => {
-    Promise.all([
-      api<unknown[]>('/materials'),
-      api<unknown[]>('/formulas'),
-      api<{ logs: Stats['recent'] }>('/audit?limit=5'),
-    ]).then(([mats, fmls, audit]) => {
-      setStats({
-        materials: (mats as unknown[]).length,
-        formulas: (fmls as unknown[]).length,
-        recent: audit.logs,
-      });
-    }).catch(() => {});
-  }, []);
+export default function DirectorDashboard() {
+  const { user } = useAuth();
 
-  const cards = [
-    { label: 'Materials', value: stats?.materials ?? '—', color: 'bg-blue-500' },
-    { label: 'Formulas', value: stats?.formulas ?? '—', color: 'bg-yellow-500' },
-  ];
+  const { data, isLoading, isError, refetch } = useQuery<DirectorData>({
+    queryKey: ['dashboard', 'director'],
+    queryFn: () => api<DirectorData>('/dashboard/director'),
+    refetchInterval: 30_000,
+  });
+
+  const { data: auditData } = useQuery<{ logs: AuditLog[] }>({
+    queryKey: ['audit', 'recent'],
+    queryFn: () => api<{ logs: AuditLog[] }>('/audit?limit=8'),
+    refetchInterval: 60_000,
+  });
+
+  const today = new Date().toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto w-full">
-      <div className="flex items-center gap-4 mb-6">
-        <RollingEnergyLogo variant="light" size="md" />
+    <div className="p-5 md:p-7 max-w-[1400px] mx-auto w-full">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-0.5">Admin Dashboard</h1>
-          <p className="text-sm text-gray-500">Rolling Energy — Manage materials, formulas, and templates.</p>
+          <p className="text-xs text-gray-400 mb-0.5">{today}</p>
+          <h1 className="text-xl font-bold text-gray-900">
+            Director Dashboard
+          </h1>
+          {user?.name && (
+            <p className="text-sm text-gray-500 mt-0.5">Welcome back, {user.name.split(' ')[0]}</p>
+          )}
+        </div>
+        <button
+          onClick={() => refetch()}
+          className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg transition-colors"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* Loading */}
+      {isLoading && (
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white rounded-2xl border border-gray-100 h-28 animate-pulse" />
+          ))}
+        </div>
+      )}
+
+      {/* Error */}
+      {isError && (
+        <div className="bg-red-50 border border-red-100 rounded-2xl p-6 text-center text-sm text-red-600 mb-6">
+          Failed to load dashboard data.{' '}
+          <button onClick={() => refetch()} className="underline">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* KPI Row */}
+      {data && <MetricsRow kpis={data.kpis} />}
+
+      {/* Middle section: Funnel + Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4" style={{ minHeight: 280 }}>
+        <div className="lg:col-span-2">
+          {data ? (
+            <FunnelChart data={data.funnel} />
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-100 h-full animate-pulse" />
+          )}
+        </div>
+        <div>
+          <AlertsPanel />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 max-w-md">
-        {cards.map((c) => (
-          <div key={c.label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <div className={`w-8 h-8 rounded-lg ${c.color} mb-3`} />
-            <div className="text-2xl font-bold text-gray-900">{c.value}</div>
-            <div className="text-sm text-gray-500 mt-0.5">{c.label}</div>
-          </div>
-        ))}
-      </div>
+      {/* Campaign Performance + Trend */}
+      {data && (
+        <div className="mb-4">
+          <CampaignPerformance
+            repStats={data.repStats}
+            weeklyTrend={data.weeklyTrend}
+          />
+        </div>
+      )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 max-w-2xl">
+      {/* Recent Activity Feed */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Recent Activity</h2>
-        {(!stats?.recent || stats.recent.length === 0) && <p className="text-sm text-gray-400">No activity yet.</p>}
-        <ul className="divide-y divide-gray-50">
-          {(stats?.recent ?? []).map((log) => (
-            <li key={log.id} className="py-3 flex justify-between">
-              <div>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded ${
-                  log.action === 'CREATE' ? 'bg-green-100 text-green-700' :
-                  log.action === 'UPDATE' ? 'bg-blue-100 text-blue-700' :
-                  'bg-red-100 text-red-700'
-                }`}>{log.action}</span>
-                <span className="ml-2 text-sm text-gray-700 capitalize">{log.entity}</span>
-                <span className="ml-2 text-xs text-gray-400">by {log.user?.name}</span>
-              </div>
-              <span className="text-xs text-gray-400">
-                {new Date(log.createdAt).toLocaleDateString()}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {!auditData?.logs?.length ? (
+          <p className="text-sm text-gray-400">No recent activity.</p>
+        ) : (
+          <ul className="divide-y divide-gray-50">
+            {auditData.logs.map((log) => (
+              <li key={log.id} className="py-2.5 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                      log.action === 'CREATE'
+                        ? 'bg-green-100 text-green-700'
+                        : log.action === 'UPDATE'
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-red-100 text-red-700'
+                    }`}
+                  >
+                    {log.action}
+                  </span>
+                  <span className="text-sm text-gray-700 capitalize">{log.entity}</span>
+                  <span className="text-xs text-gray-400">by {log.user?.name}</span>
+                </div>
+                <span className="text-xs text-gray-400">
+                  {new Date(log.createdAt).toLocaleDateString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                  })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
