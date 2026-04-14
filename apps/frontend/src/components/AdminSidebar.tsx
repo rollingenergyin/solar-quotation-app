@@ -10,12 +10,7 @@ const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
   { href: '/finance/dashboard', label: 'Finance Panel', icon: '💰' },
   // Solar Growth OS
-  { href: '/admin/crm', label: 'CRM Leads', icon: '🎯' },
-  { href: '/admin/crm/campaigns', label: 'Campaigns', icon: '📣' },
-  { href: '/admin/crm/automation', label: 'Automation', icon: '⚙️' },
-  { href: '/admin/crm/templates', label: 'MSG Templates', icon: '💬' },
-  { href: '/admin/crm/analytics', label: 'Growth Analytics', icon: '📈' },
-  { href: '/admin/crm/import', label: 'Sheet Import', icon: '📥' },
+  { href: '/admin/crm', label: 'CRM Panel', icon: '🎯' },
   // Existing
   { href: '/admin/users', label: 'Sales Users', icon: '👥' },
   { href: '/admin/quotations', label: 'All Quotations', icon: '📋' },
