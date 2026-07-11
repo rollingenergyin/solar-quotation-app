@@ -13,7 +13,6 @@ function getOpenAI(): OpenAI {
   }
   return _openai;
 }
-const openai = { chat: { completions: { create: (...args: Parameters<OpenAI['chat']['completions']['create']>) => getOpenAI().chat.completions.create(...args) } } };
 
 export type SocialSegment = 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL' | 'GROUND_MOUNT';
 export type SocialContentType = 'STATIC_POST' | 'CAROUSEL' | 'REEL';
@@ -126,7 +125,8 @@ Return a JSON object with EXACTLY these fields:
 Important: Return ONLY the JSON, no markdown, no explanation.`;
 
   try {
-    const completion = await openai.chat.completions.create({
+    // Explicit non-streaming request so the SDK return type is ChatCompletion (not Stream).
+    const completion = await getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -134,19 +134,43 @@ Important: Return ONLY the JSON, no markdown, no explanation.`;
       ],
       temperature: 0.8,
       response_format: { type: 'json_object' },
+      stream: false,
     });
 
-    const raw = completion.choices[0].message.content ?? '{}';
-    const parsed = JSON.parse(raw) as Omit<GeneratedContent, 'contentStrategy'>;
+    const raw = completion.choices[0]?.message.content ?? '{}';
+    const parsedUnknown: unknown = JSON.parse(raw);
+    if (!isGeneratedContentPayload(parsedUnknown)) {
+      return fallbackContent(segment, contentType, strategy);
+    }
 
     return {
-      ...parsed,
+      ...parsedUnknown,
       contentStrategy: strategy,
-      hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.slice(0, 25) : [],
+      hashtags: Array.isArray(parsedUnknown.hashtags)
+        ? parsedUnknown.hashtags.slice(0, 25)
+        : [],
     };
   } catch {
     return fallbackContent(segment, contentType, strategy);
   }
+}
+
+function isGeneratedContentPayload(
+  value: unknown,
+): value is Omit<GeneratedContent, 'contentStrategy'> {
+  if (!value || typeof value !== 'object') return false;
+  const data = value as Record<string, unknown>;
+  return (
+    typeof data.title === 'string' &&
+    typeof data.captionEn === 'string' &&
+    typeof data.captionHi === 'string' &&
+    typeof data.captionMr === 'string' &&
+    typeof data.visualConcept === 'string' &&
+    Array.isArray(data.hashtags) &&
+    data.hashtags.every((tag) => typeof tag === 'string') &&
+    Array.isArray(data.platforms) &&
+    data.platforms.every((platform) => typeof platform === 'string')
+  );
 }
 
 // ─── Fallback (when OpenAI unavailable) ──────────────────────────────────────

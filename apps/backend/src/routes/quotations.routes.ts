@@ -1325,7 +1325,10 @@ router.put('/:id/site-costing', authenticate, [
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const id = req.params.id!;
-    const existing = await prisma.quotation.findUnique({ where: { id } });
+    const existing = await prisma.quotation.findUnique({
+      where: { id },
+      include: { result: true },
+    });
     if (!existing) return res.status(404).json({ error: 'Quotation not found' });
 
     const lockedRows = await prisma.$queryRaw<Array<{ isPricingLocked: boolean }>>`

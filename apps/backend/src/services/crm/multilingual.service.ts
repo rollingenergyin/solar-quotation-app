@@ -86,6 +86,7 @@ export async function generateDynamicMessage(opts: {
     ],
     max_tokens: 200,
     temperature: 0.7,
+    stream: false,
   });
 
   return completion.choices[0]?.message?.content?.trim() ?? generateFallbackMessage(intent, language, variables);
