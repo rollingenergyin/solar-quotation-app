@@ -243,6 +243,7 @@ model FormulaVersion {
 
 enum QuotationStatus {
   DRAFT
+  REVIEW
   SENT
   ACCEPTED
   REJECTED
@@ -290,6 +291,7 @@ model Quotation {
   parentQuotationId String?
   quotationDataJson Json?          // Full snapshot for edit/replay
   generatedPdfPath  String?       // Path to stored PDF file
+  isPricingLocked   Boolean        @default(false) @map("isPricingLocked")
 
   customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
   site       Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
@@ -430,7 +432,8 @@ model QuotationTemplate {
   // BOM configuration (admin controls)
   bomShowQty  Boolean @default(false)
   bomShowUnit Boolean @default(false)
-  bomItems    Json?   // TemplateBomItem[] — null means use system default
+  bomItems    Json?   // TemplateBomItem[] — null means use system default (legacy / primary option)
+  bomOptions  Json?   // deprecated — legacy full-BOM alternatives; use bomItems[].alternatives
 
   // Subsidy configuration (DCR only)
   subsidyResidential1kw     Float @default(30000)
@@ -455,6 +458,7 @@ model QuotationTemplate {
   paymentMilestones   Json  // {step,title,pct,desc,icon}[]
   paymentTermsBullets Json  // string[]
   paymentModes        Json  // {icon,label}[]
+  bankDetails         Json? // {accountName,accountNumber,bankName,accountType,ifscCode}
   whyReasons          Json  // {icon,title,desc}[]
   testimonials        Json  // {name,location,text}[]
   certifications      Json  // string[]
@@ -465,6 +469,15 @@ model QuotationTemplate {
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("quotation_templates")
+}
+
+/// Global quotation settings shared across all templates (singleton row id = "default").
+model QuotationGlobalSettings {
+  id                    String   @id @default("default")
+  processTimelineRanges Json     @default("[]")
+  updatedAt             DateTime @updatedAt
+
+  @@map("quotation_global_settings")
 }
 
 // ─── ROI & EMI Results ───────────────────────────────────────────────────────
@@ -1434,4 +1447,122 @@ model AnalyticsSnapshot {
   @@unique([date, metric, dimension])
   @@index([date, metric])
   @@map("analytics_snapshots")
+}
+
+// ── Phase 10: Social Media Automation ────────────────────────────────────────
+
+enum SocialSegment {
+  RESIDENTIAL
+  SOCIETY
+  COMMERCIAL
+  INDUSTRIAL
+  GROUND_MOUNT
+}
+
+enum SocialContentType {
+  STATIC_POST
+  CAROUSEL
+  REEL
+}
+
+enum SocialPostStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SCHEDULED
+  POSTED
+  FAILED
+}
+
+model SocialPost {
+  id            String            @id @default(cuid())
+  title         String
+  segment       SocialSegment
+  contentType   SocialContentType
+  status        SocialPostStatus  @default(DRAFT)
+  captionEn     String
+  captionHi     String
+  captionMr     String
+  hashtags      String[]
+  visualConcept String
+  mediaUrl      String?
+  platforms     String[]          @default(["instagram", "facebook"])
+  scheduledAt   DateTime?
+  postedAt      DateTime?
+  isNewsSlot      Boolean           @default(false)
+  rejectionNote   String?
+  productionSpec  Json?
+  currentVersion  Int               @default(1)
+  slotId          String?           @unique
+  slot            SocialCalendarSlot? @relation(fields: [slotId], references: [id])
+  analytics       SocialPostAnalytics?
+  versions        SocialPostVersion[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([segment, contentType])
+  @@map("social_posts")
+}
+
+model SocialPostVersion {
+  id         String     @id @default(cuid())
+  postId     String
+  post       SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  version    Int
+  label      String     // "AI Generated" | "User Edit" | "Final Approved" | "Rejected"
+  snapshot   Json
+  editedBy   String?
+  changeNote String?
+  createdAt  DateTime   @default(now())
+
+  @@unique([postId, version])
+  @@index([postId])
+  @@map("social_post_versions")
+}
+
+model SocialCalendarSlot {
+  id         String    @id @default(cuid())
+  date       DateTime
+  slotType   String    // PLANNED | NEWS_SLOT | FESTIVAL | SEASONAL
+  theme      String
+  segment    String?
+  isNewsSlot Boolean   @default(false)
+  post       SocialPost?
+  createdAt  DateTime  @default(now())
+
+  @@index([date])
+  @@map("social_calendar_slots")
+}
+
+model SocialPlatformCredential {
+  id           String    @id @default(cuid())
+  platform     String    // instagram | linkedin | facebook
+  displayName  String
+  accessToken  String
+  refreshToken String?
+  pageId       String?
+  expiresAt    DateTime?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([platform])
+  @@map("social_platform_credentials")
+}
+
+model SocialPostAnalytics {
+  id        String     @id @default(cuid())
+  post      SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String     @unique
+  platform  String
+  likes     Int        @default(0)
+  comments  Int        @default(0)
+  shares    Int        @default(0)
+  reach     Int        @default(0)
+  clicks    Int        @default(0)
+  fetchedAt DateTime   @default(now())
+
+  @@map("social_post_analytics")
 }

@@ -8,7 +8,7 @@ interface Props { quoteNumber: string; config?: TemplateConfig | null }
 
 const DEFAULT_PARAGRAPHS = [
   'Rolling Energy is a premier Solar EPC (Engineering, Procurement & Construction) company committed to delivering world-class rooftop and ground-mounted solar solutions across India. Founded by industry veterans, we bring decades of combined experience in power systems, project management, and renewable energy.',
-  "We partner with India's leading panel and inverter manufacturers to source only Grade-A, BIS-certified equipment, ensuring every system we install delivers peak performance for 25+ years with minimal maintenance.",
+  "We partner with India's leading panel and inverter manufacturers to source only BIS-certified equipment, ensuring every system we install delivers peak performance for 25+ years with minimal maintenance.",
   'From a single rooftop installation to large commercial arrays, our integrated approach covers every stage — site survey, system design, procurement, installation, net metering registration, and ongoing AMC — under one roof.',
 ];
 

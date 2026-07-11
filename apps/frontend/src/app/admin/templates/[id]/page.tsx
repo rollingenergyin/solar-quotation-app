@@ -2,7 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import type { TemplateConfig, TemplateBomItem } from '@/types/quotation-template';
+import type { TemplateConfig, ProcessTimelineRange } from '@/types/quotation-template';
+import { DEFAULT_BANK_DETAILS } from '@/types/quotation-template';
+import BomItemsEditor from '@/components/quick-quote/BomItemsEditor';
+import WarrantyItemsEditor from '@/components/quick-quote/WarrantyItemsEditor';
+import { bomItemsFromStored, serializeBomItems } from '@/constants/bom-items';
+import { warrantyItemsFromStored, serializeWarrantyItems } from '@/constants/warranty-items';
 
 import { API_URL } from '@/lib/api';
 
@@ -146,6 +151,11 @@ export default function TemplateEditorPage() {
   const [error,    setError]    = useState('');
   const [saved,    setSaved]    = useState(false);
   const [activeTab, setActiveTab] = useState('company');
+  const [timelineRanges, setTimelineRanges] = useState<ProcessTimelineRange[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineSaving, setTimelineSaving] = useState(false);
+  const [timelineSaved, setTimelineSaved] = useState(false);
+  const [timelineError, setTimelineError] = useState('');
 
   // For new template: load active template as base
   const loadTemplate = useCallback(async (templateId: string) => {
@@ -154,15 +164,69 @@ export default function TemplateEditorPage() {
       const res = await fetch(url, { headers: authHeaders(), credentials: 'include' });
       if (!res.ok) throw new Error('Failed to load template');
       const data = await res.json();
-      setTemplate(isNew ? { ...data, id: undefined, name: `${data.name} (New Version)` } : data);
+      const withBank = {
+        ...data,
+        bankDetails: { ...DEFAULT_BANK_DETAILS, ...(data.bankDetails ?? {}) },
+      };
+      setTemplate(isNew ? { ...withBank, id: undefined, name: `${data.name} (New Version)` } : withBank);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally { setLoading(false); }
   }, [isNew]);
 
+  const loadTimelineRanges = useCallback(async () => {
+    setTimelineLoading(true);
+    setTimelineError('');
+    try {
+      const res = await fetch(`${API_URL}/templates/global/process-timeline`, {
+        headers: authHeaders(),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to load timeline ranges');
+      const data = await res.json();
+      setTimelineRanges(Array.isArray(data.ranges) ? data.ranges : []);
+    } catch (e: unknown) {
+      setTimelineError(e instanceof Error ? e.message : 'Failed to load timeline ranges');
+    } finally {
+      setTimelineLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadTemplate(id);
   }, [id, loadTemplate]);
+
+  useEffect(() => {
+    if (activeTab === 'process') {
+      loadTimelineRanges();
+    }
+  }, [activeTab, loadTimelineRanges]);
+
+  const saveTimelineRanges = async () => {
+    setTimelineSaving(true);
+    setTimelineError('');
+    setTimelineSaved(false);
+    try {
+      const res = await fetch(`${API_URL}/templates/global/process-timeline`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ ranges: timelineRanges }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to save timeline ranges');
+      }
+      const data = await res.json();
+      setTimelineRanges(Array.isArray(data.ranges) ? data.ranges : timelineRanges);
+      setTimelineSaved(true);
+      setTimeout(() => setTimelineSaved(false), 2500);
+    } catch (e: unknown) {
+      setTimelineError(e instanceof Error ? e.message : 'Failed to save timeline ranges');
+    } finally {
+      setTimelineSaving(false);
+    }
+  };
 
   const save = async () => {
     if (!template) return;
@@ -380,122 +444,39 @@ export default function TemplateEditorPage() {
 
             <Section
               title="BOM Items"
-              desc="Customize the items listed in the Bill of Materials. Use Move Up/Down to reorder — the order here is the exact order shown in the quotation PDF. Leave empty to use the system default."
+              desc="Customize each product in the Bill of Materials. Add alternatives per product to show OR options for specification or make in the proposal. Leave empty to use the system default."
             >
-              <div className="space-y-3">
-                {((t.bomItems ?? []) as TemplateBomItem[]).map((item, idx) => {
-                  const items = (t.bomItems ?? []) as TemplateBomItem[];
-                  const moveUp = () => {
-                    if (idx <= 0) return;
-                    const updated = [...items];
-                    [updated[idx - 1], updated[idx]] = [updated[idx], updated[idx - 1]];
-                    set('bomItems', updated.map((it, i) => ({ ...it, srNo: i + 1 })) as never);
-                  };
-                  const moveDown = () => {
-                    if (idx >= items.length - 1) return;
-                    const updated = [...items];
-                    [updated[idx], updated[idx + 1]] = [updated[idx + 1], updated[idx]];
-                    set('bomItems', updated.map((it, i) => ({ ...it, srNo: i + 1 })) as never);
-                  };
-                  return (
-                  <div key={idx} className="border border-gray-200 rounded-lg p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-400 w-6 text-center">{item.srNo}</span>
-                      <div className="flex gap-1" title="Reorder">
-                        <button
-                          type="button"
-                          onClick={moveUp}
-                          disabled={idx === 0}
-                          className="p-1.5 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed text-gray-500 hover:text-gray-700"
-                          aria-label="Move up"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          onClick={moveDown}
-                          disabled={idx === items.length - 1}
-                          className="p-1.5 rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed text-gray-500 hover:text-gray-700"
-                          aria-label="Move down"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="Item Name (e.g. Solar Panels)"
-                        value={item.name}
-                        onChange={e => {
-                          const updated = [...(t.bomItems as TemplateBomItem[])];
-                          updated[idx] = { ...updated[idx], name: e.target.value };
-                          set('bomItems', updated as never);
-                        }}
-                        className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 font-semibold"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const updated = (t.bomItems as TemplateBomItem[]).filter((_, i) => i !== idx)
-                            .map((it, i) => ({ ...it, srNo: i + 1 }));
-                          set('bomItems', updated as never);
-                        }}
-                        className="text-red-400 hover:text-red-600 text-xs font-semibold px-2 py-1 rounded border border-red-200 hover:bg-red-50"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Specification (e.g. 575 Wp Mono PERC, DCR Certified)"
-                      value={item.specification}
-                      onChange={e => {
-                        const updated = [...(t.bomItems as TemplateBomItem[])];
-                        updated[idx] = { ...updated[idx], specification: e.target.value };
-                        set('bomItems', updated as never);
-                      }}
-                      className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Make / Brand (e.g. Tier-1 Make — Adani / Waaree)"
-                      value={item.make}
-                      onChange={e => {
-                        const updated = [...(t.bomItems as TemplateBomItem[])];
-                        updated[idx] = { ...updated[idx], make: e.target.value };
-                        set('bomItems', updated as never);
-                      }}
-                      className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  </div>
-                  );
-                })}
+              <BomItemsEditor
+                items={
+                  (() => {
+                    const legacy = (t as TemplateConfig & { bomOptions?: unknown }).bomOptions;
+                    const loaded = bomItemsFromStored(t.bomItems, legacy);
+                    return loaded.length
+                      ? loaded
+                      : [{ srNo: 1, name: '', specification: '', make: '' }];
+                  })()
+                }
+                onChange={(rows) => {
+                  const serialized = serializeBomItems(rows);
+                  setTemplate((prev) => prev ? {
+                    ...prev,
+                    bomItems: serialized.length > 0 ? serialized : null,
+                  } : prev);
+                }}
+              />
+              {((t.bomItems as unknown[] | null)?.length) ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    const current = (t.bomItems ?? []) as TemplateBomItem[];
-                    set('bomItems', [
-                      ...current,
-                      { srNo: current.length + 1, name: '', specification: '', make: '' },
-                    ] as never);
-                  }}
-                  className="w-full py-2 text-sm font-semibold text-blue-600 border-2 border-dashed border-blue-200 rounded-lg hover:bg-blue-50"
+                  onClick={() => setTemplate((prev) => prev ? { ...prev, bomItems: null } : prev)}
+                  className="w-full py-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 mt-3"
                 >
-                  + Add BOM Item
+                  Reset to system default
                 </button>
-                {(t.bomItems as TemplateBomItem[] | null)?.length ? (
-                  <button
-                    type="button"
-                    onClick={() => set('bomItems', null as never)}
-                    className="w-full py-1.5 text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-                  >
-                    Reset to system default
-                  </button>
-                ) : (
-                  <p className="text-xs text-gray-400 text-center py-2">
-                    No custom items — system default BOM will be used (auto-calculated from system size).
-                  </p>
-                )}
-              </div>
+              ) : (
+                <p className="text-xs text-gray-400 text-center py-2">
+                  No custom items — system default BOM will be used (auto-calculated from system size).
+                </p>
+              )}
             </Section>
           </div>
         )}
@@ -670,7 +651,118 @@ export default function TemplateEditorPage() {
               />
             </Section>
 
-            <Section title="Timeline Banner Text" desc="The text shown in the dark banner at the bottom of the process page.">
+            <Section
+              title="Timeline by System Size (All Templates)"
+              desc="Sets the Our Process banner text from total system kW. Saved here applies to every quotation template automatically."
+            >
+              {timelineError && (
+                <p className="text-sm text-red-600 mb-3">{timelineError}</p>
+              )}
+              {timelineLoading ? (
+                <p className="text-sm text-gray-500">Loading timeline ranges…</p>
+              ) : (
+                <div className="space-y-3">
+                  {timelineRanges.map((range, i) => (
+                    <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end border border-gray-100 rounded-lg p-3">
+                      <div className="md:col-span-2">
+                        <FieldLabel>Min kW</FieldLabel>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={range.minKw}
+                          onChange={(e) => {
+                            const next = [...timelineRanges];
+                            next[i] = { ...next[i], minKw: Number(e.target.value) };
+                            setTimelineRanges(next);
+                          }}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <FieldLabel>Max kW</FieldLabel>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={range.maxKw ?? ''}
+                          placeholder="No limit"
+                          onChange={(e) => {
+                            const next = [...timelineRanges];
+                            next[i] = {
+                              ...next[i],
+                              maxKw: e.target.value.trim() === '' ? null : Number(e.target.value),
+                            };
+                            setTimelineRanges(next);
+                          }}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        />
+                      </div>
+                      <div className="md:col-span-7">
+                        <FieldLabel>Timeline Banner Text</FieldLabel>
+                        <TextInput
+                          value={range.timelineText}
+                          onChange={(v) => {
+                            const next = [...timelineRanges];
+                            next[i] = { ...next[i], timelineText: v };
+                            setTimelineRanges(next);
+                          }}
+                          placeholder="Total Timeline: 10–18 Working Days"
+                        />
+                      </div>
+                      <div className="md:col-span-1 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setTimelineRanges(timelineRanges.filter((_, idx) => idx !== i))}
+                          className="text-red-400 hover:text-red-600 text-lg px-1"
+                          title="Remove range"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setTimelineRanges([
+                      ...timelineRanges,
+                      {
+                        minKw: timelineRanges.length
+                          ? (timelineRanges[timelineRanges.length - 1].maxKw ?? timelineRanges[timelineRanges.length - 1].minKw + 5)
+                          : 0,
+                        maxKw: null,
+                        timelineText: 'Total Timeline: 10–18 Working Days',
+                      },
+                    ])}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    + Add kW range
+                  </button>
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={saveTimelineRanges}
+                      disabled={timelineSaving || timelineRanges.length === 0}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                      style={{ background: '#161c34' }}
+                    >
+                      {timelineSaving ? 'Saving…' : 'Save timeline ranges (all templates)'}
+                    </button>
+                    {timelineSaved && (
+                      <span className="text-sm text-green-600 font-medium">Saved — applies to all templates</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Example: 0–3 kW → 8–12 days, 3–10 kW → 10–18 days, 10+ kW → 15–25 days. Leave Max kW blank for open-ended ranges.
+                  </p>
+                </div>
+              )}
+            </Section>
+
+            <Section
+              title="Fallback Timeline Text"
+              desc="Used only when no kW range matches the quotation system size."
+            >
               <TextInput
                 value={t.processTimelineText ?? ''}
                 onChange={(v) => set('processTimelineText', v)}
@@ -685,28 +777,27 @@ export default function TemplateEditorPage() {
           <div className="space-y-8">
             <Section title="AMC Services (Page 7)" desc="The 6 maintenance service cards.">
               <ObjectListEditor
-                items={t.maintenanceServices ?? []}
-                onChange={(v) => set('maintenanceServices', v)}
+                items={(t.maintenanceServices ?? []) as unknown as Record<string, string | number>[]}
+                onChange={(v) => set('maintenanceServices', v as unknown as typeof t.maintenanceServices)}
                 fields={[
                   { key: 'icon',  label: 'Icon',  placeholder: '🔍' },
                   { key: 'title', label: 'Title', placeholder: 'Annual Inspection' },
+                  { key: 'coverage', label: 'Coverage', placeholder: 'included or optional' },
                   { key: 'desc',  label: 'Description', type: 'textarea', placeholder: 'Service description…' },
                 ]}
                 addLabel="+ Add service"
-                defaultItem={{ icon: '🔧', title: '', desc: '' }}
+                defaultItem={{ icon: '🔧', title: '', coverage: 'included', desc: '' }}
               />
             </Section>
 
-            <Section title="Warranty Table" desc="Rows in the warranty summary table.">
-              <ObjectListEditor
-                items={t.warrantyItems ?? []}
-                onChange={(v) => set('warrantyItems', v)}
-                fields={[
-                  { key: 'item',     label: 'Component',        placeholder: 'Solar Module' },
-                  { key: 'warranty', label: 'Warranty Coverage', placeholder: '25-Year Performance Guarantee' },
-                ]}
-                addLabel="+ Add warranty row"
-                defaultItem={{ item: '', warranty: '' }}
+            <Section title="Warranty Table" desc="Rows in the warranty summary table. Add alternatives per component to show OR options in the proposal.">
+              <WarrantyItemsEditor
+                items={
+                  warrantyItemsFromStored(t.warrantyItems).length
+                    ? warrantyItemsFromStored(t.warrantyItems)
+                    : [{ item: '', warranty: '' }]
+                }
+                onChange={(rows) => set('warrantyItems', serializeWarrantyItems(rows))}
               />
             </Section>
           </div>
@@ -742,6 +833,38 @@ export default function TemplateEditorPage() {
                 addLabel="+ Add payment mode"
                 defaultItem={{ icon: '💳', label: '' }}
               />
+            </Section>
+
+            <Section title="Bank Details" desc="Shown on the Detailed Cost Breakdown page for NEFT/RTGS transfers.">
+              {(() => {
+                const bank = { ...DEFAULT_BANK_DETAILS, ...(t.bankDetails ?? {}) };
+                const setBank = (patch: Partial<typeof bank>) =>
+                  set('bankDetails', { ...bank, ...patch });
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <FieldLabel>Account Name</FieldLabel>
+                      <TextInput value={bank.accountName} onChange={(v) => setBank({ accountName: v })} />
+                    </div>
+                    <div>
+                      <FieldLabel>Account Number</FieldLabel>
+                      <TextInput value={bank.accountNumber} onChange={(v) => setBank({ accountNumber: v })} />
+                    </div>
+                    <div>
+                      <FieldLabel>Bank Name</FieldLabel>
+                      <TextInput value={bank.bankName} onChange={(v) => setBank({ bankName: v })} />
+                    </div>
+                    <div>
+                      <FieldLabel>Account Type</FieldLabel>
+                      <TextInput value={bank.accountType} onChange={(v) => setBank({ accountType: v })} />
+                    </div>
+                    <div>
+                      <FieldLabel>IFSC Code</FieldLabel>
+                      <TextInput value={bank.ifscCode} onChange={(v) => setBank({ ifscCode: v })} />
+                    </div>
+                  </div>
+                );
+              })()}
             </Section>
 
             <Section title="Terms & Conditions Bullets" desc="The bullet points shown at the bottom of the payment page.">

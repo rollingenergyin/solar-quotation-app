@@ -68,9 +68,9 @@ export default function CrmLeadDetailPage() {
             </div>
             <div className="space-y-1.5 text-sm text-gray-600">
               <div>📞 {String(lead.phone)}</div>
-              {lead.email && <div>✉ {String(lead.email)}</div>}
-              {lead.city && <div>📍 {String(lead.city)}</div>}
-              {lead.systemKw && <div>⚡ {String(lead.systemKw)} kW system</div>}
+              {lead.email ? <div>✉ {String(lead.email)}</div> : null}
+              {lead.city ? <div>📍 {String(lead.city)}</div> : null}
+              {lead.systemKw ? <div>⚡ {String(lead.systemKw)} kW system</div> : null}
               <div>🌐 {String(lead.language)} · {String(lead.source)}</div>
               <div className="flex items-center gap-1.5 pt-1">
                 <div className="w-24 h-2 rounded-full bg-gray-100 overflow-hidden">
@@ -141,7 +141,7 @@ export default function CrmLeadDetailPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium text-gray-800">{String(e.eventType).replace(/_/g, ' ')}</div>
-                        {e.fromStage && <div className="text-xs text-gray-500">{String(e.fromStage)} → {String(e.toStage)}</div>}
+                        {e.fromStage ? <div className="text-xs text-gray-500">{String(e.fromStage)} → {String(e.toStage)}</div> : null}
                         <div className="text-xs text-gray-400">
                           by {String(e.actor)} · {new Date(String(e.createdAt)).toLocaleString('en-IN')}
                         </div>

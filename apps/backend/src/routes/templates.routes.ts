@@ -81,6 +81,34 @@ router.get('/', authenticate, requireAdmin, async (req: Request, res: Response, 
   } catch (err) { next(err); }
 });
 
+// ── GET global process timeline ranges (admin) ─────────────────────────────
+router.get('/global/process-timeline', authenticate, requireAdmin, async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { getProcessTimelineRanges } = await import('../services/process-timeline.service.js');
+    const ranges = await getProcessTimelineRanges(prisma);
+    res.json({ ranges });
+  } catch (err) { next(err); }
+});
+
+// ── PUT global process timeline ranges (admin) — applies to all templates ───
+router.put('/global/process-timeline', authenticate, requireAdmin, [
+  body('ranges').isArray({ min: 1 }).withMessage('ranges array required'),
+], async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { updateProcessTimelineRanges } = await import('../services/process-timeline.service.js');
+    const ranges = await updateProcessTimelineRanges(prisma, req.body.ranges);
+    res.json({ ranges });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('timeline range')) {
+      return res.status(400).json({ error: err.message });
+    }
+    next(err);
+  }
+});
+
 // ── GET single template (admin) ────────────────────────────────────────────
 router.get('/:id', authenticate, requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -110,9 +138,9 @@ router.post('/', authenticate, requireAdmin, [
       companyName, companyTagline, companyAddress, companyPhone, companyEmail, companyWebsite,
       introLetterBody, aboutParagraphs, aboutMission, aboutStats, aboutHighlights,
       processSteps, processTimelineText, maintenanceServices, warrantyItems,
-      paymentMilestones, paymentTermsBullets, paymentModes,
+      paymentMilestones, paymentTermsBullets, paymentModes, bankDetails,
       whyReasons, testimonials, certifications,
-      depreciationTable, depreciationNote, bomItems, bomShowQty, bomShowUnit,
+      depreciationTable, depreciationNote, bomItems, bomOptions, bomShowQty, bomShowUnit,
       panelWarrantyYears, subsidyResidential1kw, subsidyResidential2kw, subsidyResidential3to10kw, subsidySocietyPerKw,
     } = req.body;
 
@@ -136,6 +164,7 @@ router.post('/', authenticate, requireAdmin, [
         bomShowQty: bomShowQty ?? false,
         bomShowUnit: bomShowUnit ?? false,
         bomItems: bomItems ?? null,
+        bomOptions: bomOptions ?? null,
         subsidyResidential1kw: subsidyResidential1kw ?? 30000,
         subsidyResidential2kw: subsidyResidential2kw ?? 60000,
         subsidyResidential3to10kw: subsidyResidential3to10kw ?? 78000,
@@ -154,6 +183,13 @@ router.post('/', authenticate, requireAdmin, [
         paymentMilestones: paymentMilestones ?? [],
         paymentTermsBullets: paymentTermsBullets ?? [],
         paymentModes: paymentModes ?? [],
+        bankDetails: bankDetails ?? {
+          accountName: 'ROLLING ENERGY (OPC) PRIVATE LIMITED',
+          accountNumber: '041263400006460',
+          bankName: 'YES BANK LTD.',
+          accountType: 'Current Account',
+          ifscCode: 'YESB0000412',
+        },
         whyReasons: whyReasons ?? [],
         testimonials: testimonials ?? [],
         certifications: certifications ?? [],
@@ -177,12 +213,12 @@ router.put('/:id', authenticate, requireAdmin, async (req: Request, res: Respons
       'companyName', 'companyTagline', 'companyAddress', 'companyPhone',
       'companyEmail', 'companyWebsite',
       'panelWarrantyYears',
-      'bomShowQty', 'bomShowUnit', 'bomItems',
+      'bomShowQty', 'bomShowUnit', 'bomItems', 'bomOptions',
       'subsidyResidential1kw', 'subsidyResidential2kw', 'subsidyResidential3to10kw', 'subsidySocietyPerKw',
       'depreciationNote', 'depreciationTable',
       'introLetterBody', 'aboutParagraphs', 'aboutMission', 'aboutStats', 'aboutHighlights',
       'processSteps', 'processTimelineText', 'maintenanceServices', 'warrantyItems',
-      'paymentMilestones', 'paymentTermsBullets', 'paymentModes',
+      'paymentMilestones', 'paymentTermsBullets', 'paymentModes', 'bankDetails',
       'whyReasons', 'testimonials', 'certifications',
     ];
 

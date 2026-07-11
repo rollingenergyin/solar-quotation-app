@@ -229,8 +229,8 @@ export async function calculateQuotation(
   // ── EMI (on total cost pre-subsidy) ────────────────────────────────────────
   const emi = {
     tenure3yr: calcEmi(grossCost, emiRatePct, 36),
-    tenure5yr: calcEmi(grossCost, emiRatePct, 60),
-    tenure7yr: calcEmi(grossCost, emiRatePct, 84),
+    tenure5yr: calcEmi(grossCost, emiRatePct, 48),
+    tenure7yr: calcEmi(grossCost, emiRatePct, 60),
   };
 
   const result: CalcResult = {
@@ -271,7 +271,7 @@ export async function calculateQuotation(
         roiYears:            paybackWithInflationYears,
         roiPercentage:       roiPct,
         emiMonthly:          emi.tenure5yr.emi,
-        emiTenureMonths:     60,
+        emiTenureMonths:     48,
         totalSavings:        lifetimeSavings,
         paybackPeriodMonths: Math.round(paybackWithInflationYears * 12),
         breakdown: {
@@ -289,7 +289,7 @@ export async function calculateQuotation(
         roiYears:            paybackWithInflationYears,
         roiPercentage:       roiPct,
         emiMonthly:          emi.tenure5yr.emi,
-        emiTenureMonths:     60,
+        emiTenureMonths:     48,
         totalSavings:        lifetimeSavings,
         paybackPeriodMonths: Math.round(paybackWithInflationYears * 12),
         breakdown: {

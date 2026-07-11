@@ -1,10 +1,63 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { ROI_DAYS_PER_YEAR } from '@/constants/roi-generation';
+import {
+  BUILDING_HEIGHT_OPTIONS,
+  METER_PHASE_OPTIONS,
+  PANEL_WATTAGE_OPTIONS,
+  STRUCTURE_CATEGORIES,
+  STRUCTURE_OPTIONS,
+  DEFAULT_WARRANTY_ITEMS,
+  resolvePanelWatt,
+  calcNumPanels,
+} from '@/constants/quick-quote-options';
+import CombinedSystemsEditor from '@/components/quick-quote/CombinedSystemsEditor';
+import { AlternativeCostingEditorCard } from '@/components/quick-quote/AlternativeCostingEditor';
+import ProposalContentEditors from '@/components/quick-quote/ProposalContentEditors';
+import {
+  DEFAULT_QUICK_QUOTE_BOM,
+  DEFAULT_QUICK_QUOTE_PAYMENT_MILESTONES,
+  DEFAULT_QUICK_QUOTE_PAYMENT_MODES,
+  DEFAULT_QUICK_QUOTE_TERMS_BULLETS,
+} from '@/constants/quick-quote-proposal-defaults';
+import {
+  bomItemsFromStored,
+  serializeBomItems,
+} from '@/constants/bom-items';
+import {
+  warrantyItemsFromStored,
+  serializeWarrantyItems,
+} from '@/constants/warranty-items';
+import type {
+  TemplateBomItem,
+  TemplatePaymentMilestone,
+  TemplatePaymentMode,
+  TemplateWarranty,
+} from '@/types/quotation-template';
+import {
+  QUOTATION_MODE_OPTIONS,
+  createCombinedSystemRow,
+  calculateCombinedSystemsPreview,
+  effectivePricePerWattForRow,
+  parseOptionalSanctionedLoadKw,
+  type QuotationMode,
+  type CombinedSystemRow,
+} from '@/constants/combined-quotation';
+import {
+  createCostingOptionRow,
+  calculateCostingOptions,
+  effectivePricePerWattForOption,
+  type CostingOptionRow,
+  type CostingSiteType,
+} from '@/constants/costing-options';
+import { OrSeparator, CostingOptionTitleBox } from '@/components/quotation/CostingSharedBlocks';
+import type { ProposalNotePlacement } from '@/constants/proposal-note';
+import { shouldShowDepreciationPage } from '@/constants/depreciation';
+import { loadSiteCostingResult, loadSiteCostingState } from '@/constants/site-costing';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -127,6 +180,7 @@ const fmtL = (n: number): string => {
 
 export default function QuickQuotationPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // ── Customer
   const [customerName, setCustomerName] = useState('');
@@ -138,18 +192,40 @@ export default function QuickQuotationPage() {
   // ── System
   const [systemType, setSystemType] = useState<'DCR' | 'NON_DCR'>('DCR');
   const [siteType, setSiteType]     = useState<'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL'>('RESIDENTIAL');
+  const [quotationMode, setQuotationMode] = useState<QuotationMode>('SINGLE');
+  const [combinedSystems, setCombinedSystems] = useState<CombinedSystemRow[]>(() => [
+    createCombinedSystemRow(1),
+    createCombinedSystemRow(2),
+  ]);
+  const [combinedSingleCosting, setCombinedSingleCosting] = useState(false);
 
   // ── Sizing
-  const [sizingMode, setSizingMode]       = useState<'monthly' | 'direct'>('monthly');
+  const [sizingMode, setSizingMode]       = useState<'monthly' | 'direct'>('direct');
   const [monthlyUnits, setMonthlyUnits]   = useState<Record<string, string>>({});
   const [directKw, setDirectKw]           = useState('');
   const [inverterSizeKw, setInverterSizeKw] = useState('');
   const [inverterManuallyEdited, setInverterManuallyEdited] = useState(false);
 
-  // ── Pricing
-  const [pricePerWatt, setPricePerWatt]       = useState('55');
-  const [totalBaseAmount, setTotalBaseAmount] = useState('');
-  const [totalCostInclGst, setTotalCostInclGst] = useState('');
+  // ── Pricing / costing options
+  const [costingOptions, setCostingOptions] = useState<CostingOptionRow[]>(() => [
+    createCostingOptionRow(1, { systemType: 'DCR', siteType: 'RESIDENTIAL', pricePerWatt: '55' }),
+  ]);
+
+  useEffect(() => {
+    setCostingOptions((prev) =>
+      prev.every((o) => o.systemType === systemType)
+        ? prev
+        : prev.map((o) => ({ ...o, systemType })),
+    );
+  }, [systemType]);
+
+  useEffect(() => {
+    setCostingOptions((prev) =>
+      prev.every((o) => o.siteType === siteType)
+        ? prev
+        : prev.map((o) => ({ ...o, siteType })),
+    );
+  }, [siteType]);
 
   // ── Params
   const [electricityRate, setElectricityRate]     = useState('18');
@@ -157,6 +233,39 @@ export default function QuickQuotationPage() {
   const [sanctionedLoadKw, setSanctionedLoadKw]   = useState('');
   const [sanctionedLoadIncreasedToKw, setSanctionedLoadIncreasedToKw] = useState('');
   const [sanctionedLoadIncreasedToManual, setSanctionedLoadIncreasedToManual] = useState(false);
+
+  // ── Site & equipment (Phase 1)
+  const [buildingHeight, setBuildingHeight] = useState('G');
+  const [buildingHeightCustomFloors, setBuildingHeightCustomFloors] = useState('');
+  const [meterPhase, setMeterPhase] = useState<'SINGLE' | 'THREE'>('SINGLE');
+  const [panelWattage, setPanelWattage] = useState('DEFAULT');
+  const [panelWattageCustom, setPanelWattageCustom] = useState('');
+  const [structureCategory, setStructureCategory] = useState<'TRAPEZOID' | 'STANDARD' | 'RAISED'>('STANDARD');
+  const [structureOption, setStructureOption] = useState('1ft');
+
+  // ── Deep edit panel (warranties, BOM, payment, T&C — collapsed by default)
+  const [deepEditOpen, setDeepEditOpen] = useState(false);
+  const [panelWarrantyYears, setPanelWarrantyYears] = useState('25');
+  const [warrantyItems, setWarrantyItems] = useState(
+    () => DEFAULT_WARRANTY_ITEMS.map((w) => ({ ...w })),
+  );
+
+  const [bomItems, setBomItems] = useState<TemplateBomItem[]>(() =>
+    bomItemsFromStored(DEFAULT_QUICK_QUOTE_BOM).length
+      ? bomItemsFromStored(DEFAULT_QUICK_QUOTE_BOM)
+      : DEFAULT_QUICK_QUOTE_BOM.map((b) => ({ ...b })),
+  );
+  const [paymentMilestones, setPaymentMilestones] = useState<TemplatePaymentMilestone[]>(() =>
+    DEFAULT_QUICK_QUOTE_PAYMENT_MILESTONES.map((m) => ({ ...m })),
+  );
+  const [paymentModes, setPaymentModes] = useState<TemplatePaymentMode[]>(() =>
+    DEFAULT_QUICK_QUOTE_PAYMENT_MODES.map((m) => ({ ...m })),
+  );
+  const [paymentTermsBullets, setPaymentTermsBullets] = useState<string[]>(() =>
+    [...DEFAULT_QUICK_QUOTE_TERMS_BULLETS],
+  );
+  const [proposalNoteText, setProposalNoteText] = useState('');
+  const [proposalNotePlacement, setProposalNotePlacement] = useState<ProposalNotePlacement>('executive_summary');
 
   // ── Form state
   const [submitting, setSubmitting] = useState(false);
@@ -178,70 +287,38 @@ export default function QuickQuotationPage() {
     return Math.max(1, Math.ceil((avg / 100) * 2) / 2);
   }, [sizingMode, directKw, monthlyUnits]);
 
-  // ── Effective price per watt ──────────────────────────────────────────────
+  const combinedTotalKw = useMemo(() => {
+    if (quotationMode !== 'COMBINED') return 0;
+    return combinedSystems.reduce((sum, row) => {
+      const kw = parseFloat(row.capacityKw);
+      return sum + (Number.isFinite(kw) && kw > 0 ? kw : 0);
+    }, 0);
+  }, [quotationMode, combinedSystems]);
+
+  const pricingKw =
+    quotationMode === 'COMBINED' ? combinedTotalKw : derivedSystemKw;
+
+  const costingOptionsCalculated = useMemo(
+    () => calculateCostingOptions(costingOptions, pricingKw),
+    [costingOptions, pricingKw],
+  );
+
+  const primaryCosting = costingOptionsCalculated[0];
+
+  const showDepreciation = useMemo(
+    () => shouldShowDepreciationPage({
+      siteType: primaryCosting?.siteType ?? siteType,
+      combinedSystems: quotationMode === 'COMBINED' ? combinedSystems : undefined,
+    }),
+    [primaryCosting?.siteType, siteType, quotationMode, combinedSystems],
+  );
+
+  // ── Effective price per watt (primary option) ─────────────────────────────
 
   const effectivePricePerWatt = useMemo(() => {
-    const ppw = parseFloat(pricePerWatt);
-    if (ppw > 0) return ppw;
-    const total = parseFloat(totalBaseAmount);
-    if (total > 0 && derivedSystemKw > 0) return total / (derivedSystemKw * 1000);
-    const gross = parseFloat(totalCostInclGst);
-    if (gross > 0 && derivedSystemKw > 0) {
-      const base = baseFromTotalInclGst(gross);
-      return base / (derivedSystemKw * 1000);
-    }
-    return 0;
-  }, [pricePerWatt, totalBaseAmount, totalCostInclGst, derivedSystemKw]);
-
-  // ── Auto-sync pricing fields ──────────────────────────────────────────────
-
-  const handlePricePerWattChange = (v: string) => {
-    setPricePerWatt(v);
-    const ppw = parseFloat(v);
-    if (ppw > 0 && derivedSystemKw > 0) {
-      const base = Math.round(derivedSystemKw * 1000 * ppw);
-      setTotalBaseAmount(String(base));
-      setTotalCostInclGst(String(totalInclGstFromBase(base)));
-    } else {
-      setTotalBaseAmount('');
-      setTotalCostInclGst('');
-    }
-  };
-
-  const handleTotalBaseAmountChange = (v: string) => {
-    setTotalBaseAmount(v);
-    const total = parseFloat(v);
-    if (total > 0 && derivedSystemKw > 0) {
-      setPricePerWatt((total / (derivedSystemKw * 1000)).toFixed(2));
-      setTotalCostInclGst(String(totalInclGstFromBase(Math.round(total))));
-    } else {
-      setPricePerWatt('');
-      setTotalCostInclGst('');
-    }
-  };
-
-  const handleTotalCostInclGstChange = (v: string) => {
-    setTotalCostInclGst(v);
-    const gross = parseFloat(v);
-    if (gross > 0 && derivedSystemKw > 0) {
-      const base = baseFromTotalInclGst(gross);
-      setTotalBaseAmount(String(base));
-      setPricePerWatt((base / (derivedSystemKw * 1000)).toFixed(2));
-    } else {
-      setTotalBaseAmount('');
-      setPricePerWatt('');
-    }
-  };
-
-  // When system size changes, re-sync pricing fields from price per watt
-  useEffect(() => {
-    const ppw = parseFloat(pricePerWatt);
-    if (ppw > 0 && derivedSystemKw > 0) {
-      const base = Math.round(derivedSystemKw * 1000 * ppw);
-      setTotalBaseAmount(String(base));
-      setTotalCostInclGst(String(totalInclGstFromBase(base)));
-    }
-  }, [derivedSystemKw]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (primaryCosting) return primaryCosting.pricePerWatt;
+    return effectivePricePerWattForOption(costingOptions[0], pricingKw);
+  }, [primaryCosting, costingOptions, pricingKw]);
 
   // Auto-fill inverter size when system size changes (unless manually edited)
   useEffect(() => {
@@ -260,16 +337,186 @@ export default function QuickQuotationPage() {
     }
   }, [derivedSystemKw, sanctionedLoadIncreasedToManual]);
 
+  // Prefill from Site Costing Engine only when opened via that flow (not direct Quick Quote)
+  useEffect(() => {
+    if (searchParams.get('fromSiteCosting') !== '1') return;
+
+    const kw = searchParams.get('systemKw');
+    const ppw = searchParams.get('pricePerWatt');
+    if (kw && Number.isFinite(parseFloat(kw))) {
+      setSizingMode('direct');
+      setDirectKw(kw);
+    }
+    if (ppw && Number.isFinite(parseFloat(ppw))) {
+      const ppwStr = ppw;
+      const sizeKw = kw && Number.isFinite(parseFloat(kw)) ? parseFloat(kw) : 0;
+      setCostingOptions((prev) => {
+        const first = prev[0] ?? createCostingOptionRow(1);
+        const p = parseFloat(ppwStr);
+        const base = sizeKw > 0 && p > 0 ? Math.round(sizeKw * 1000 * p) : 0;
+        return [
+          {
+            ...first,
+            pricePerWatt: ppwStr,
+            totalBaseAmount: base > 0 ? String(base) : '',
+            totalCostInclGst: base > 0 ? String(totalInclGstFromBase(base)) : '',
+          },
+          ...prev.slice(1),
+        ];
+      });
+    }
+    const bh = searchParams.get('buildingHeight');
+    if (bh) setBuildingHeight(bh as typeof buildingHeight);
+    const bhf = searchParams.get('buildingHeightCustomFloors');
+    if (bhf) setBuildingHeightCustomFloors(bhf);
+    const mp = searchParams.get('meterPhase');
+    if (mp === 'SINGLE' || mp === 'THREE') setMeterPhase(mp);
+    const pw = searchParams.get('panelWattage');
+    if (pw) setPanelWattage(pw as typeof panelWattage);
+    const pwc = searchParams.get('panelWattageCustom');
+    if (pwc) setPanelWattageCustom(pwc);
+    const sc = searchParams.get('structureCategory');
+    if (sc === 'TRAPEZOID' || sc === 'STANDARD' || sc === 'RAISED') setStructureCategory(sc);
+    const so = searchParams.get('structureOption');
+    if (so) setStructureOption(so);
+
+    const siteResult = loadSiteCostingResult();
+    if (siteResult && !ppw && siteResult.pricePerWatt > 0) {
+      const ppwStr = String(siteResult.pricePerWatt);
+      setCostingOptions((prev) => {
+        const first = prev[0] ?? createCostingOptionRow(1);
+        const sizeKw = siteResult.systemSizeKw > 0 ? siteResult.systemSizeKw : parseFloat(directKw) || 0;
+        const base = sizeKw > 0 ? Math.round(sizeKw * 1000 * siteResult.pricePerWatt) : 0;
+        return [
+          {
+            ...first,
+            pricePerWatt: ppwStr,
+            totalBaseAmount: base > 0 ? String(base) : '',
+            totalCostInclGst: base > 0 ? String(totalInclGstFromBase(base)) : '',
+          },
+          ...prev.slice(1),
+        ];
+      });
+    }
+    if (siteResult && !kw && siteResult.systemSizeKw > 0) {
+      setSizingMode('direct');
+      setDirectKw(String(siteResult.systemSizeKw));
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load template proposal defaults when system/site type changes
+  useEffect(() => {
+    api<{
+      panelWarrantyYears?: number;
+      warrantyItems?: TemplateWarranty[] | null;
+      bomItems?: TemplateBomItem[] | null;
+      bomOptions?: unknown;
+      paymentMilestones?: TemplatePaymentMilestone[];
+      paymentModes?: TemplatePaymentMode[];
+      paymentTermsBullets?: string[];
+    }>(`/templates/active?systemType=${systemType}&siteType=${siteType}`)
+      .then((tpl) => {
+        if (tpl.panelWarrantyYears) setPanelWarrantyYears(String(tpl.panelWarrantyYears));
+        if (tpl.warrantyItems?.length) {
+          const loaded = warrantyItemsFromStored(tpl.warrantyItems);
+          setWarrantyItems(loaded.length ? loaded : DEFAULT_WARRANTY_ITEMS.map((w) => ({ ...w })));
+        } else {
+          setWarrantyItems(DEFAULT_WARRANTY_ITEMS.map((w) => ({ ...w })));
+        }
+        const loaded = bomItemsFromStored(tpl.bomItems, tpl.bomOptions);
+        if (loaded.length) {
+          setBomItems(loaded);
+        } else {
+          setBomItems(DEFAULT_QUICK_QUOTE_BOM.map((b) => ({ ...b })));
+        }
+        if (tpl.paymentMilestones?.length) {
+          setPaymentMilestones(tpl.paymentMilestones.map((m) => ({ ...m })));
+        } else {
+          setPaymentMilestones(DEFAULT_QUICK_QUOTE_PAYMENT_MILESTONES.map((m) => ({ ...m })));
+        }
+        if (tpl.paymentModes?.length) {
+          setPaymentModes(tpl.paymentModes.map((m) => ({ ...m })));
+        } else {
+          setPaymentModes(DEFAULT_QUICK_QUOTE_PAYMENT_MODES.map((m) => ({ ...m })));
+        }
+        if (tpl.paymentTermsBullets?.length) {
+          setPaymentTermsBullets([...tpl.paymentTermsBullets]);
+        } else {
+          setPaymentTermsBullets([...DEFAULT_QUICK_QUOTE_TERMS_BULLETS]);
+        }
+      })
+      .catch(() => {
+        setPanelWarrantyYears('25');
+        setWarrantyItems(DEFAULT_WARRANTY_ITEMS.map((w) => ({ ...w })));
+        setBomItems(DEFAULT_QUICK_QUOTE_BOM.map((b) => ({ ...b })));
+        setPaymentMilestones(DEFAULT_QUICK_QUOTE_PAYMENT_MILESTONES.map((m) => ({ ...m })));
+        setPaymentModes(DEFAULT_QUICK_QUOTE_PAYMENT_MODES.map((m) => ({ ...m })));
+        setPaymentTermsBullets([...DEFAULT_QUICK_QUOTE_TERMS_BULLETS]);
+      });
+  }, [systemType, siteType]);
+
+  const resolvedPanelWatt = useMemo(
+    () => resolvePanelWatt(
+      panelWattage,
+      panelWattageCustom ? parseFloat(panelWattageCustom) : null,
+    ),
+    [panelWattage, panelWattageCustom],
+  );
+
+  const numPanels = useMemo(
+    () => calcNumPanels(derivedSystemKw, resolvedPanelWatt),
+    [derivedSystemKw, resolvedPanelWatt],
+  );
+
+  const totalPanelWatts = numPanels * resolvedPanelWatt;
+
   // ── Live summary ─────────────────────────────────────────────────────────
 
-  const summary = useMemo(() => computeLive(
-    derivedSystemKw,
-    effectivePricePerWatt,
-    parseFloat(electricityRate) || 18,
-    parseFloat(peakSunHours) || 4,
-    systemType,
-    siteType,
-  ), [derivedSystemKw, effectivePricePerWatt, electricityRate, peakSunHours, systemType, siteType]);
+  const combinedPreview = useMemo(
+    () => calculateCombinedSystemsPreview(
+      combinedSystems,
+      systemType,
+      siteType,
+      parseFloat(electricityRate) || 18,
+      parseFloat(peakSunHours) || 4,
+      combinedSingleCosting
+        ? { singleCosting: true, combinedPricePerWatt: effectivePricePerWatt }
+        : undefined,
+    ),
+    [combinedSystems, systemType, siteType, electricityRate, peakSunHours, combinedSingleCosting, effectivePricePerWatt],
+  );
+
+  const summary = useMemo(() => {
+    if (quotationMode === 'COMBINED') {
+      if (!combinedPreview) return null;
+      const c = combinedPreview.combined;
+      return {
+        systemSizeKw: c.systemSizeKw,
+        roofAreaSqft: Math.round(c.systemSizeKw * 80),
+        dailyProductionKwh: c.dailyProductionKwh,
+        annualProductionKwh: c.annualProductionKwh,
+        baseCost: c.baseCost,
+        gstAmount: c.gstAmount,
+        grossCost: c.grossCost,
+        subsidyAmount: c.subsidyAmount,
+        netCost: c.netCost,
+        annualSavings: c.annualSavings,
+        breakevenYears: c.breakevenYears,
+        pricePerWattEffective: c.blendedPricePerWatt,
+      };
+    }
+    return computeLive(
+      derivedSystemKw,
+      effectivePricePerWatt,
+      parseFloat(electricityRate) || 18,
+      parseFloat(peakSunHours) || 4,
+      systemType,
+      siteType,
+    );
+  }, [
+    quotationMode, combinedPreview, derivedSystemKw, effectivePricePerWatt,
+    electricityRate, peakSunHours, systemType, siteType,
+  ]);
 
   // ── Submit ────────────────────────────────────────────────────────────────
 
@@ -278,9 +525,32 @@ export default function QuickQuotationPage() {
 
     if (!customerName.trim()) { setFormError('Customer name is required.'); return; }
     if (!address.trim())      { setFormError('Address is required.'); return; }
-    if (derivedSystemKw <= 0) { setFormError('Please enter monthly units or a system size.'); return; }
-    if (effectivePricePerWatt <= 0) { setFormError('Please enter a price per watt or total base amount.'); return; }
     if (!(parseFloat(electricityRate) > 0)) { setFormError('Enter a valid electricity rate.'); return; }
+
+    if (costingOptionsCalculated.length === 0) {
+      setFormError('Enter pricing for at least one costing option.');
+      return;
+    }
+    if (costingOptions.length > 1 && costingOptions.some((o) => !o.title.trim())) {
+      setFormError('Every alternative costing option requires a title.');
+      return;
+    }
+
+    if (quotationMode === 'COMBINED') {
+      if (!combinedPreview) {
+        setFormError(
+          combinedSingleCosting
+            ? 'Enter capacity for at least 2 systems and combined pricing.'
+            : 'Enter capacity and pricing for at least 2 systems.',
+        );
+        return;
+      }
+    } else {
+      if (derivedSystemKw <= 0) { setFormError('Please enter monthly units or a system size.'); return; }
+    }
+
+    const submitSystemType = primaryCosting?.systemType ?? systemType;
+    const submitSiteType = primaryCosting?.siteType ?? siteType;
 
     setSubmitting(true);
     try {
@@ -290,22 +560,105 @@ export default function QuickQuotationPage() {
         city: city.trim() || undefined,
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
-        systemType,
-        siteType,
-        systemSizeKw: derivedSystemKw,
-        inverterSizeKw: inverterSizeKw ? parseFloat(inverterSizeKw) : derivedSystemKw,
-        pricePerWatt: effectivePricePerWatt,
+        systemType: submitSystemType,
+        siteType: submitSiteType,
+        quotationMode,
+        combinedSingleCosting: quotationMode === 'COMBINED' ? combinedSingleCosting : undefined,
+        costingOptions: costingOptions.map((row) => ({
+          title: row.title.trim(),
+          systemType: row.systemType,
+          siteType: row.siteType,
+          pricePerWatt: effectivePricePerWattForOption(row, pricingKw),
+        })),
+        systemSizeKw: quotationMode === 'COMBINED'
+          ? combinedPreview!.combined.systemSizeKw
+          : derivedSystemKw,
+        inverterSizeKw: quotationMode === 'COMBINED'
+          ? combinedPreview!.combined.systemSizeKw
+          : (inverterSizeKw ? parseFloat(inverterSizeKw) : derivedSystemKw),
+        pricePerWatt: quotationMode === 'COMBINED'
+          ? combinedPreview!.combined.blendedPricePerWatt
+          : effectivePricePerWatt,
+        systems: quotationMode === 'COMBINED'
+          ? combinedSystems.map((row) => {
+              const kw = parseFloat(row.capacityKw);
+              const increasedManual = parseOptionalSanctionedLoadKw(row.sanctionedLoadIncreasedToKw);
+              return {
+                label: row.label,
+                consumerNumber: row.consumerNumber,
+                systemSizeKw: kw,
+                pricePerWatt: combinedSingleCosting
+                  ? effectivePricePerWatt
+                  : effectivePricePerWattForRow(row),
+                siteType: row.siteType,
+                meterPhase: row.meterPhase,
+                structureCategory: row.structureCategory,
+                structureOption: row.structureOption,
+                sanctionedLoadKw: parseOptionalSanctionedLoadKw(row.sanctionedLoadKw) ?? undefined,
+                sanctionedLoadIncreasedToKw:
+                  increasedManual ?? (Number.isFinite(kw) && kw > 0 ? kw : undefined),
+              };
+            })
+          : undefined,
         electricityRatePerUnit: parseFloat(electricityRate) || 18,
         peakSunHours: parseFloat(peakSunHours) || 4,
-        sanctionedLoadKw:
-          sanctionedLoadKw.trim() !== '' && Number.isFinite(parseFloat(sanctionedLoadKw))
-            ? parseFloat(sanctionedLoadKw)
+        ...(quotationMode !== 'COMBINED'
+          ? {
+              sanctionedLoadKw:
+                sanctionedLoadKw.trim() !== '' && Number.isFinite(parseFloat(sanctionedLoadKw))
+                  ? parseFloat(sanctionedLoadKw)
+                  : undefined,
+              sanctionedLoadIncreasedToKw:
+                sanctionedLoadIncreasedToKw.trim() !== '' &&
+                Number.isFinite(parseFloat(sanctionedLoadIncreasedToKw))
+                  ? parseFloat(sanctionedLoadIncreasedToKw)
+                  : undefined,
+            }
+          : {}),
+        buildingHeight,
+        buildingHeightCustomFloors:
+          buildingHeight === 'CUSTOM' &&
+          buildingHeightCustomFloors.trim() !== '' &&
+          Number.isFinite(parseFloat(buildingHeightCustomFloors))
+            ? parseFloat(buildingHeightCustomFloors)
             : undefined,
-        sanctionedLoadIncreasedToKw:
-          sanctionedLoadIncreasedToKw.trim() !== '' &&
-          Number.isFinite(parseFloat(sanctionedLoadIncreasedToKw))
-            ? parseFloat(sanctionedLoadIncreasedToKw)
+        meterPhase,
+        panelWattage,
+        panelWattageCustom:
+          panelWattage === 'CUSTOM' &&
+          panelWattageCustom.trim() !== '' &&
+          Number.isFinite(parseFloat(panelWattageCustom))
+            ? parseFloat(panelWattageCustom)
             : undefined,
+        structureCategory,
+        structureOption,
+        panelWarrantyYears: parseInt(panelWarrantyYears, 10) || 25,
+        warrantyItems: serializeWarrantyItems(warrantyItems),
+        bomItems: serializeBomItems(bomItems),
+        paymentMilestones: paymentMilestones.filter((m) => m.title.trim()),
+        paymentModes: paymentModes.filter((m) => m.label.trim()),
+        paymentTermsBullets: paymentTermsBullets.filter((b) => b.trim()),
+        ...(proposalNoteText.trim()
+          ? {
+              proposalNote: {
+                text: proposalNoteText.trim(),
+                placement: proposalNotePlacement,
+              },
+            }
+          : {}),
+        ...(searchParams.get('fromSiteCosting') === '1'
+          ? (() => {
+              const sc = loadSiteCostingResult();
+              const photos = loadSiteCostingState().sitePhotos?.map((p) => ({
+                name: p.name,
+                url: p.dataUrl ?? p.url,
+              }));
+              return {
+                ...(sc ? { siteCosting: sc } : {}),
+                ...(photos?.length ? { sitePhotos: photos } : {}),
+              };
+            })()
+          : {}),
       };
 
       const res = await api<{ quotationId: string; quoteNumber: string }>('/quotations/quick', {
@@ -421,17 +774,177 @@ export default function QuickQuotationPage() {
                   onChange={v => setSiteType(v as 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL')}
                   accent="#6690cc"
                 />
+                {quotationMode === 'COMBINED' && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    For reference and template selection. Connection type per system is set in Combined Systems below.
+                  </p>
+                )}
               </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <FieldLabel>Quotation Mode</FieldLabel>
+              <div className="flex flex-col sm:flex-row gap-2">
+                {QUOTATION_MODE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setQuotationMode(opt.value)}
+                    className={`flex-1 text-left px-4 py-3 rounded-xl border text-sm transition-all ${
+                      quotationMode === opt.value
+                        ? 'bg-gray-900 text-white border-gray-900'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                    }`}
+                  >
+                    <span className="font-semibold block">{opt.label}</span>
+                    <span className={`text-xs mt-0.5 block ${quotationMode === opt.value ? 'text-gray-300' : 'text-gray-400'}`}>
+                      {opt.hint}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          </FormCard>
+
+          {quotationMode === 'COMBINED' && (
+            <FormCard title="3. Combined Systems" icon="🔗">
+              <CombinedSystemsEditor
+                systems={combinedSystems}
+                onChange={setCombinedSystems}
+                defaultSiteType={siteType}
+                singleCosting={combinedSingleCosting}
+                onSingleCostingChange={setCombinedSingleCosting}
+              />
+            </FormCard>
+          )}
+
+          {/* ── Section 3: Site & Equipment ─────────────────────────────── */}
+          <FormCard title={`${quotationMode === 'COMBINED' ? '4' : '3'}. Site & Equipment Details`} icon="🏗️">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <FieldLabel>Building Height</FieldLabel>
+                <select
+                  value={buildingHeight}
+                  onChange={(e) => setBuildingHeight(e.target.value)}
+                  className={selectCls}
+                >
+                  {BUILDING_HEIGHT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                {buildingHeight === 'CUSTOM' && (
+                  <div className="mt-2">
+                    <FieldLabel>Custom floors above ground</FieldLabel>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="e.g. 6"
+                      value={buildingHeightCustomFloors}
+                      onChange={(e) => setBuildingHeightCustomFloors(e.target.value)}
+                      className={inputCls}
+                    />
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-1">Affects wiring length and installation estimates</p>
+              </div>
+
+              {quotationMode !== 'COMBINED' && (
+              <div>
+                <FieldLabel>Meter Phase</FieldLabel>
+                <select
+                  value={meterPhase}
+                  onChange={(e) => setMeterPhase(e.target.value as 'SINGLE' | 'THREE')}
+                  className={selectCls}
+                >
+                  {METER_PHASE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              )}
+
+              <div>
+                <FieldLabel>Panel Wattage</FieldLabel>
+                <select
+                  value={panelWattage}
+                  onChange={(e) => setPanelWattage(e.target.value)}
+                  className={selectCls}
+                >
+                  {PANEL_WATTAGE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                {panelWattage === 'CUSTOM' && (
+                  <div className="mt-2">
+                    <FieldLabel>Custom panel wattage (Wp)</FieldLabel>
+                    <input
+                      type="number"
+                      min="100"
+                      step="5"
+                      placeholder="e.g. 610"
+                      value={panelWattageCustom}
+                      onChange={(e) => setPanelWattageCustom(e.target.value)}
+                      className={inputCls}
+                    />
+                  </div>
+                )}
+                {(() => {
+                  const displayKw = quotationMode === 'COMBINED'
+                    ? (combinedPreview?.combined.systemSizeKw ?? 0)
+                    : derivedSystemKw;
+                  const displayPanels = quotationMode === 'COMBINED'
+                    ? calcNumPanels(displayKw, resolvedPanelWatt)
+                    : numPanels;
+                  if (displayKw <= 0 || displayPanels <= 0) return null;
+                  return (
+                    <p className="text-xs text-blue-700 bg-blue-50 rounded-lg px-2 py-1.5 mt-2 tabular-nums">
+                      {displayPanels} panels × {resolvedPanelWatt} Wp ={' '}
+                      <strong>{fmt(displayPanels * resolvedPanelWatt)} Wp</strong>
+                    </p>
+                  );
+                })()}
+              </div>
+
+              {quotationMode !== 'COMBINED' && (
+              <div>
+                <FieldLabel>Mounting Structure</FieldLabel>
+                <select
+                  value={structureCategory}
+                  onChange={(e) => {
+                    const cat = e.target.value as 'TRAPEZOID' | 'STANDARD' | 'RAISED';
+                    setStructureCategory(cat);
+                    setStructureOption(STRUCTURE_OPTIONS[cat]?.[0]?.value ?? '1ft');
+                  }}
+                  className={selectCls}
+                >
+                  {STRUCTURE_CATEGORIES.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <select
+                  value={structureOption}
+                  onChange={(e) => setStructureOption(e.target.value)}
+                  className={`${selectCls} mt-2`}
+                >
+                  {(STRUCTURE_OPTIONS[structureCategory] ?? []).map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              )}
             </div>
           </FormCard>
 
-          {/* ── Section 3: Electricity / System Size ───────────────────── */}
-          <FormCard title="3. System Sizing" icon="☀️">
+          {quotationMode === 'SINGLE' && (
+          <>
+          <FormCard title="4. System Sizing" icon="☀️">
             {/* Mode toggle */}
             <div className="flex gap-2 mb-4">
               {[
-                { id: 'monthly', label: '📊 Enter Monthly Units' },
                 { id: 'direct',  label: '⚡ Enter System Size Directly' },
+                { id: 'monthly', label: '📊 Enter Monthly Units' },
               ].map(opt => (
                 <button
                   key={opt.id}
@@ -518,66 +1031,29 @@ export default function QuickQuotationPage() {
             )}
           </FormCard>
 
-          {/* ── Section 4: Pricing ─────────────────────────────────────── */}
-          <FormCard title="4. Pricing" icon="💰">
-            <p className="text-xs text-gray-500 mb-3">
-              Enter any one of the three — the other two update (GST 8.9% on base, same as quick-quote calculation).
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <FieldLabel required>Base Price per Watt (₹/W)</FieldLabel>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400">₹</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="0.5"
-                    placeholder="55"
-                    value={pricePerWatt}
-                    onChange={e => handlePricePerWattChange(e.target.value)}
-                    className={`${inputCls} text-right tabular-nums`}
-                  />
-                  <span className="text-sm text-gray-400 whitespace-nowrap">/ watt</span>
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Updates base amount and total incl. GST</p>
-              </div>
-              <div>
-                <FieldLabel>Total Base Amount (ex GST) (₹)</FieldLabel>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400">₹</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    placeholder="auto-calculated"
-                    value={totalBaseAmount}
-                    onChange={e => handleTotalBaseAmountChange(e.target.value)}
-                    className={`${inputCls} text-right tabular-nums`}
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Updates ₹/W and total incl. GST</p>
-              </div>
-              <div>
-                <FieldLabel>Total Cost incl. GST (₹)</FieldLabel>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-400">₹</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    placeholder="auto-calculated"
-                    value={totalCostInclGst}
-                    onChange={e => handleTotalCostInclGstChange(e.target.value)}
-                    className={`${inputCls} text-right tabular-nums`}
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">GST 8.9% — updates base and ₹/W</p>
-              </div>
-            </div>
-          </FormCard>
+          <AlternativeCostingEditorCard
+            sectionNumber="5"
+            options={costingOptions}
+            onChange={setCostingOptions}
+            systemSizeKw={pricingKw}
+            defaultSiteType={siteType as CostingSiteType}
+            defaultSystemType={systemType}
+          />
+          </>
+          )}
 
-          {/* ── Section 5: Quick Parameters ────────────────────────────── */}
-          <FormCard title="5. Quick Parameters" icon="🔧">
+          {quotationMode === 'COMBINED' && (
+            <AlternativeCostingEditorCard
+              sectionNumber="5"
+              options={costingOptions}
+              onChange={setCostingOptions}
+              systemSizeKw={pricingKw}
+              defaultSiteType={siteType as CostingSiteType}
+              defaultSystemType={systemType}
+            />
+          )}
+
+          <FormCard title={`${quotationMode === 'COMBINED' ? '6' : '6'}. Quick Parameters`} icon="🔧">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <FieldLabel>Electricity Rate (₹ per unit)</FieldLabel>
@@ -608,51 +1084,83 @@ export default function QuickQuotationPage() {
                   <span className="text-sm text-gray-400 whitespace-nowrap">hrs/day</span>
                 </div>
               </div>
-              <div>
-                <FieldLabel>Present Sanctioned Load (kW)</FieldLabel>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    placeholder="e.g. 5"
-                    value={sanctionedLoadKw}
-                    onChange={(e) => setSanctionedLoadKw(e.target.value)}
-                    className={`${inputCls} text-right tabular-nums`}
-                  />
-                  <span className="text-sm text-gray-400 whitespace-nowrap">kW</span>
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Optional — used to assess load sufficiency</p>
-              </div>
-              <div>
-                <FieldLabel>Sanctioned load to be increased to (kW)</FieldLabel>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    placeholder={derivedSystemKw > 0 ? String(derivedSystemKw) : '—'}
-                    value={sanctionedLoadIncreasedToKw}
-                    onChange={(e) => {
-                      setSanctionedLoadIncreasedToManual(true);
-                      setSanctionedLoadIncreasedToKw(e.target.value);
-                    }}
-                    className={`${inputCls} text-right tabular-nums`}
-                  />
-                  <span className="text-sm text-gray-400 whitespace-nowrap">kW</span>
-                </div>
-                <p className="text-xs text-gray-400 mt-1">
-                  Defaults to the proposed system size; change if the target sanctioned load after upgrade should differ.
-                </p>
-              </div>
+              {quotationMode !== 'COMBINED' && (
+                <>
+                  <div>
+                    <FieldLabel>Present Sanctioned Load (kW)</FieldLabel>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="e.g. 5"
+                        value={sanctionedLoadKw}
+                        onChange={(e) => setSanctionedLoadKw(e.target.value)}
+                        className={`${inputCls} text-right tabular-nums`}
+                      />
+                      <span className="text-sm text-gray-400 whitespace-nowrap">kW</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Optional — used to assess load sufficiency</p>
+                  </div>
+                  <div>
+                    <FieldLabel>Sanctioned load to be increased to (kW)</FieldLabel>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder={derivedSystemKw > 0 ? String(derivedSystemKw) : '—'}
+                        value={sanctionedLoadIncreasedToKw}
+                        onChange={(e) => {
+                          setSanctionedLoadIncreasedToManual(true);
+                          setSanctionedLoadIncreasedToKw(e.target.value);
+                        }}
+                        className={`${inputCls} text-right tabular-nums`}
+                      />
+                      <span className="text-sm text-gray-400 whitespace-nowrap">kW</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Defaults to the proposed system size; change if the target sanctioned load after upgrade should differ.
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
             <p className="text-xs text-gray-400 mt-3">
               Note: Quick Quotation uses <strong>Direct Production</strong> (system size × sun hours) without derating. For detailed efficiency analysis, use the full quotation workflow.
             </p>
           </FormCard>
 
-          {/* ── Sanctioned Load Note (live preview) ─────────────────── */}
-          {sanctionedLoadKw && Number.isFinite(parseFloat(sanctionedLoadKw)) && parseFloat(sanctionedLoadKw) > 0 && derivedSystemKw > 0 && (
+          <ProposalContentEditors
+            sectionNumber={quotationMode === 'COMBINED' ? '6' : '7'}
+            open={deepEditOpen}
+            onOpenChange={setDeepEditOpen}
+            panelWarrantyYears={panelWarrantyYears}
+            onPanelWarrantyYearsChange={setPanelWarrantyYears}
+            warrantyItems={warrantyItems}
+            onWarrantyItemsChange={setWarrantyItems}
+            bomItems={bomItems}
+            onBomItemsChange={setBomItems}
+            paymentMilestones={paymentMilestones}
+            onPaymentMilestonesChange={setPaymentMilestones}
+            paymentModes={paymentModes}
+            onPaymentModesChange={setPaymentModes}
+            paymentTermsBullets={paymentTermsBullets}
+            onPaymentTermsBulletsChange={setPaymentTermsBullets}
+            quotationMode={quotationMode}
+            showDepreciation={showDepreciation}
+            proposalNoteText={proposalNoteText}
+            onProposalNoteTextChange={setProposalNoteText}
+            proposalNotePlacement={proposalNotePlacement}
+            onProposalNotePlacementChange={setProposalNotePlacement}
+          />
+
+          {/* ── Sanctioned Load Note (live preview — single system only) ── */}
+          {quotationMode !== 'COMBINED' &&
+            sanctionedLoadKw &&
+            Number.isFinite(parseFloat(sanctionedLoadKw)) &&
+            parseFloat(sanctionedLoadKw) > 0 &&
+            derivedSystemKw > 0 && (
             <div
               className="rounded-2xl px-5 py-4 border"
               style={{
@@ -707,11 +1215,56 @@ export default function QuickQuotationPage() {
 
               {summary ? (
                 <div className="p-5 space-y-4">
-                  {/* System */}
+                  {quotationMode === 'COMBINED' && combinedPreview && !combinedSingleCosting && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                        Per System
+                      </p>
+                      <div className="space-y-2">
+                        {combinedPreview.systems.map((sys) => (
+                          <div key={sys.index} className="rounded-lg bg-gray-50 px-3 py-2 text-xs">
+                            <p className="font-semibold text-gray-800 mb-1">{sys.displayName}</p>
+                            <SummaryRow label="Capacity" value={`${sys.systemSizeKw} kW`} />
+                            <SummaryRow label="Net Cost" value={fmtL(sys.netCost)} />
+                            <SummaryRow label="Annual Savings" value={`₹${fmt(sys.annualSavings)}`} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {quotationMode === 'COMBINED' && combinedPreview && combinedSingleCosting && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                        Per System
+                      </p>
+                      <div className="space-y-2">
+                        {combinedPreview.systems.map((sys) => (
+                          <div key={sys.index} className="rounded-lg bg-gray-50 px-3 py-2 text-xs">
+                            <p className="font-semibold text-gray-800 mb-1">{sys.displayName}</p>
+                            <SummaryRow label="Capacity" value={`${sys.systemSizeKw} kW`} />
+                            <SummaryRow label="Daily Generation" value={`${sys.dailyProductionKwh} kWh`} />
+                            <SummaryRow label="Annual Savings" value={`₹${fmt(sys.annualSavings)}`} />
+                            <SummaryRow label="30-Year Savings" value={fmtL(sys.savings30YrRs)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">System</p>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                      {quotationMode === 'COMBINED' ? 'Commercial Summary' : 'System'}
+                    </p>
                     <div className="space-y-1.5">
                       <SummaryRow label="System Size" value={`${summary.systemSizeKw} kW`} accent />
+                      {quotationMode === 'SINGLE' && (
+                        <SummaryRow
+                          label="Panels"
+                          value={`${numPanels} × ${resolvedPanelWatt} W = ${fmt(totalPanelWatts)} W`}
+                        />
+                      )}
+                      <SummaryRow label="Meter Phase" value={meterPhase === 'THREE' ? 'Three Phase' : 'Single Phase'} />
                       <SummaryRow label="Roof Area Required" value={`${fmt(summary.roofAreaSqft)} sq.ft`} />
                       <SummaryRow label="Daily Production" value={`${summary.dailyProductionKwh} kWh`} />
                       <SummaryRow label="Annual Production" value={`${fmt(summary.annualProductionKwh)} kWh`} />
@@ -720,7 +1273,35 @@ export default function QuickQuotationPage() {
 
                   <div className="h-px bg-gray-100" />
 
-                  {/* Cost */}
+                  {/* Cost — primary or multiple options */}
+                  {costingOptionsCalculated.length > 1 ? (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                        Costing Options
+                      </p>
+                      <div className="space-y-3">
+                        {costingOptionsCalculated.map((opt, idx) => (
+                          <div key={opt.index}>
+                            {idx > 0 && (
+                              <div className="my-3">
+                                <OrSeparator layout="compact" />
+                              </div>
+                            )}
+                            <CostingOptionTitleBox
+                              index={opt.index}
+                              title={opt.title}
+                              layout="compact"
+                              className="mb-2"
+                            />
+                            <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs">
+                              <SummaryRow label="Effective Cost" value={`₹${opt.pricePerWatt.toFixed(1)} / Wp`} />
+                              <SummaryRow label="Net Payable" value={fmtL(opt.netCost)} accent />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : summary ? (
                   <div>
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Cost Breakdown</p>
                     <div className="space-y-1.5">
@@ -740,6 +1321,7 @@ export default function QuickQuotationPage() {
                       </div>
                     </div>
                   </div>
+                  ) : null}
 
                   <div className="h-px bg-gray-100" />
 
@@ -762,10 +1344,15 @@ export default function QuickQuotationPage() {
             {/* Generate button */}
             <button
               onClick={handleGenerate}
-              disabled={submitting || !summary}
+              disabled={
+                submitting ||
+                costingOptionsCalculated.length === 0 ||
+                (quotationMode === 'COMBINED' ? !combinedPreview : derivedSystemKw <= 0)
+              }
               className="w-full py-4 rounded-2xl text-base font-bold text-white transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                background: submitting || !summary
+                background: submitting || costingOptionsCalculated.length === 0 ||
+                  (quotationMode === 'COMBINED' ? !combinedPreview : derivedSystemKw <= 0)
                   ? '#9ca3af'
                   : 'linear-gradient(135deg, #6690cc, #3c5e94)',
               }}
@@ -794,6 +1381,9 @@ export default function QuickQuotationPage() {
 
 const inputCls =
   'w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white';
+
+const selectCls =
+  'w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white text-gray-800';
 
 function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (

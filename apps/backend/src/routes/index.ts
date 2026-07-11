@@ -18,6 +18,8 @@ import crmRoutes from './crm.routes.js';
 import automationRoutes from './automation.routes.js';
 import messageTemplatesRoutes from './message-templates.routes.js';
 import campaignsRoutes from './campaigns.routes.js';
+import socialRoutes from './social.routes.js';
+import siteCostingRoutes from './site-costing.routes.js';
 
 const router = Router();
 
@@ -31,6 +33,7 @@ router.use('/audit', auditRoutes);
 router.use('/customers', customersRoutes);
 router.use('/sites', sitesRoutes);
 router.use('/quotations', quotationsRoutes);
+router.use('/site-costing', siteCostingRoutes);
 router.use('/templates', templatesRoutes);
 router.use('/params', paramsRoutes);
 router.use('/finance', financeRoutes);
@@ -40,6 +43,7 @@ router.use('/crm', crmRoutes);
 router.use('/automation', automationRoutes);
 router.use('/crm-templates', messageTemplatesRoutes);
 router.use('/campaigns', campaignsRoutes);
+router.use('/social', socialRoutes);
 
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

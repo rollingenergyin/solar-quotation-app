@@ -2,7 +2,9 @@
 
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
+import ProposalNoteBlock from '../ProposalNoteBlock';
 import type { TemplateDepreciationRow } from '../../../types/quotation-template';
+import type { ProposalNote } from '@/constants/proposal-note';
 
 interface Props {
   quoteNumber: string;
@@ -11,6 +13,7 @@ interface Props {
   depreciationNote: string;
   pageNumber?: number;
   totalPages?: number;
+  proposalNote?: ProposalNote | null;
 }
 
 const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -28,6 +31,7 @@ export default function DepreciationPage({
   depreciationNote,
   pageNumber = 9,
   totalPages = 14,
+  proposalNote,
 }: Props) {
   const table = depreciationTable?.length ? depreciationTable : DEFAULT_TABLE;
 
@@ -163,6 +167,8 @@ export default function DepreciationPage({
             </p>
           </div>
         </div>
+
+        <ProposalNoteBlock placement="depreciation" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={pageNumber} />

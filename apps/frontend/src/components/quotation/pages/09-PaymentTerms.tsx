@@ -2,9 +2,23 @@
 
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
-import type { TemplateConfig, TemplatePaymentMilestone, TemplatePaymentMode } from '../../../types/quotation-template';
+import ProposalNoteBlock from '../ProposalNoteBlock';
+import type {
+  TemplateConfig,
+  TemplatePaymentMilestone,
+  TemplatePaymentMode,
+} from '../../../types/quotation-template';
+import type { ProposalNote } from '@/constants/proposal-note';
+import { BankDetailsBlock } from '../CostingSharedBlocks';
 
-interface Props { quoteNumber: string; netCost?: number; config?: TemplateConfig | null; pageNumber?: number; totalPages?: number }
+interface Props {
+  quoteNumber: string;
+  netCost?: number;
+  config?: TemplateConfig | null;
+  pageNumber?: number;
+  totalPages?: number;
+  proposalNote?: ProposalNote | null;
+}
 
 const DEFAULT_MILESTONES: TemplatePaymentMilestone[] = [
   { step: '01', title: 'Order Confirmation', pct: 50, desc: 'Token advance upon signing of agreement. Enables procurement of all equipment and scheduling of installation team.', icon: '✅' },
@@ -23,23 +37,29 @@ const DEFAULT_BULLETS = [
   'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
   'PM Surya Ghar subsidy is subject to DISCOM approval and government policy at time of commissioning.',
   "Bank loan/EMI arrangements are as per the lending institution's terms and discretion.",
-  'Any applicable DISCOM/net metering charges are additional and borne by the customer.',
 ];
 
-export default function PaymentTerms({ quoteNumber, config, pageNumber = 9, totalPages = 13 }: Props) {
+const EXCLUDED_PAYMENT_BULLET = /DISCOM\/net metering charges are additional/i;
+
+function filterPaymentBullets(items: string[]): string[] {
+  return items.filter((b) => b?.trim() && !EXCLUDED_PAYMENT_BULLET.test(b));
+}
+
+export default function PaymentTerms({
+  quoteNumber, config, pageNumber = 9, totalPages = 13, proposalNote,
+}: Props) {
   const milestones = config?.paymentMilestones?.length ? config.paymentMilestones : DEFAULT_MILESTONES;
   const modes   = config?.paymentModes?.length       ? config.paymentModes       : DEFAULT_MODES;
-  const bullets = config?.paymentTermsBullets?.length ? config.paymentTermsBullets : DEFAULT_BULLETS;
+  const bullets = filterPaymentBullets(
+    config?.paymentTermsBullets?.length ? config.paymentTermsBullets : DEFAULT_BULLETS,
+  );
 
   return (
     <div className="quotation-page flex flex-col" style={{ background: '#ffffff' }}>
-      <QuotationHeader quoteNumber={quoteNumber} pageTitle="Payment Terms" pageNumber={pageNumber} totalPages={totalPages} />
+      <QuotationHeader quoteNumber={quoteNumber} pageTitle="Payment Schedule" pageNumber={pageNumber} totalPages={totalPages} />
 
-      <div className="flex-1 px-12 py-6" style={{ paddingBottom: '36px' }}>
-        <div className="mb-7">
-          <p className="text-xs font-semibold tracking-widest uppercase mb-1" style={{ color: '#6690cc' }}>
-            Commercial Terms
-          </p>
+      <div className="flex-1 px-12 py-5" style={{ paddingBottom: '36px' }}>
+        <div className="mb-4">
           <h2
             className="text-2xl font-bold"
             style={{ color: '#161c34', fontFamily: 'Poppins, sans-serif' }}
@@ -50,7 +70,7 @@ export default function PaymentTerms({ quoteNumber, config, pageNumber = 9, tota
         </div>
 
         {/* Milestone cards */}
-        <div className="space-y-4 mb-8">
+        <div className="space-y-2.5 mb-4">
           {milestones.map((m, idx) => (
             <div
               key={m.step}
@@ -122,33 +142,37 @@ export default function PaymentTerms({ quoteNumber, config, pageNumber = 9, tota
         </div>
 
         {/* Payment modes */}
-        <div className="mb-6">
-          <p className="text-xs font-semibold tracking-widest uppercase mb-3" style={{ color: '#9ca3af' }}>
+        <div className="mb-3">
+          <p className="text-xs font-semibold tracking-widest uppercase mb-1.5" style={{ color: '#9ca3af' }}>
             Accepted Payment Modes
           </p>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-4 gap-2">
             {modes.map((p) => (
               <div
                 key={p.label}
-                className="rounded-xl p-4 text-center border"
+                className="rounded-lg p-3 text-center border"
                 style={{ borderColor: '#e5e7eb', background: '#f9fafb' }}
               >
-                <span style={{ fontSize: '24px' }}>{p.icon}</span>
-                <p className="text-xs text-gray-600 mt-2 font-medium leading-tight">{p.label}</p>
+                <span style={{ fontSize: '20px' }}>{p.icon}</span>
+                <p className="text-[11px] text-gray-600 mt-1.5 font-medium leading-tight">{p.label}</p>
               </div>
             ))}
           </div>
         </div>
 
+        <BankDetailsBlock config={config} className="mb-3" />
+
         {/* Terms */}
-        <div className="rounded-xl px-5 py-4 border" style={{ borderColor: '#e5e7eb', background: '#f9fafb' }}>
-          <p className="text-xs font-semibold mb-2" style={{ color: '#161c34' }}>Terms & Conditions</p>
-          <ul className="space-y-1 text-xs text-gray-500">
+        <div className="rounded-lg px-4 py-3 border quotation-no-break" style={{ borderColor: '#e5e7eb', background: '#f9fafb' }}>
+          <p className="text-xs font-semibold mb-1.5" style={{ color: '#161c34' }}>Terms & Conditions</p>
+          <ul className="space-y-0.5 text-[11px] leading-snug text-gray-500">
             {bullets.map((b, i) => (
               <li key={i}>• {b}</li>
             ))}
           </ul>
         </div>
+
+        <ProposalNoteBlock placement="payment_terms" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={pageNumber} />

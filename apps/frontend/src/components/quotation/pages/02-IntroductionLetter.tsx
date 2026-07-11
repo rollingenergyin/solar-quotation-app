@@ -2,7 +2,9 @@
 
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
+import ProposalNoteBlock from '../ProposalNoteBlock';
 import type { TemplateConfig } from '../../../types/quotation-template';
+import type { ProposalNote } from '@/constants/proposal-note';
 
 interface Props {
   clientName: string;
@@ -12,6 +14,7 @@ interface Props {
   systemSizeKw: number;
   quoteNumber: string;
   config?: TemplateConfig | null;
+  proposalNote?: ProposalNote | null;
 }
 
 const DEFAULT_BODY = [
@@ -23,7 +26,7 @@ const DEFAULT_BODY = [
 ];
 
 export default function IntroductionLetter({
-  clientName, clientAddress, contactPerson, date, systemSizeKw, quoteNumber, config,
+  clientName, clientAddress, contactPerson, date, systemSizeKw, quoteNumber, config, proposalNote,
 }: Props) {
   const body = config?.introLetterBody?.length ? config.introLetterBody : DEFAULT_BODY;
   const companyName = config?.companyName ?? 'Rolling Energy';
@@ -91,6 +94,7 @@ export default function IntroductionLetter({
           className="no-pdf-accent absolute right-0 top-0 bottom-0 w-1.5"
           style={{ background: 'linear-gradient(180deg, #6690cc 0%, #161c34 100%)', opacity: 0.15 }}
         />
+        <ProposalNoteBlock placement="introduction_letter" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={2} />

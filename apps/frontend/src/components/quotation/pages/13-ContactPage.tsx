@@ -56,7 +56,7 @@ export default function ContactPage({ quoteNumber, config, pageNumber = 13, tota
           Ready to Go Solar?
         </h2>
         <p className="text-sm mb-10" style={{ color: 'rgba(255,255,255,0.6)', maxWidth: '380px' }}>
-          Our solar specialists are available 6 days a week to answer your questions,
+          Our solar specialists are available to answer your questions,
           arrange a site visit, or finalise your order.
         </p>
 

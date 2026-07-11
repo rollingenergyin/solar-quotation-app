@@ -8,11 +8,13 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const navItems = [
   { href: '/sales',                  label: 'Dashboard',      icon: '⊞' },
+  { href: '/sales/crm',              label: 'CRM',            icon: '🎯' },
   { href: '/sales/customers',        label: 'Customers',      icon: '👥' },
   { href: '/sales/quotations',       label: 'My Quotations',  icon: '📋' },
   { href: '/sales/quick-quotation',  label: 'Quick Quote',    icon: '⚡' },
+  { href: '/sales/site-costing',     label: 'Site Costing',   icon: '🏗️' },
   { href: '/attendance',             label: 'Attendance',     icon: '⏱' },
-  { href: '/sales/profile',          label: 'Profile',       icon: '👤' },
+  { href: '/sales/profile',          label: 'Profile',        icon: '👤' },
 ];
 
 const STORAGE_KEY = 'sidebar-collapsed';

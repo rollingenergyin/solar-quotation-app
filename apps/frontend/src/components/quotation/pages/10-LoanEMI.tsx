@@ -2,6 +2,8 @@
 
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
+import ProposalNoteBlock from '../ProposalNoteBlock';
+import type { ProposalNote } from '@/constants/proposal-note';
 
 interface Props {
   quoteNumber: string;
@@ -18,6 +20,7 @@ interface Props {
   emi7YrTotalInterest?: number;
   pageNumber?: number;
   totalPages?: number;
+  proposalNote?: ProposalNote | null;
 }
 
 const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -28,14 +31,14 @@ export default function LoanEMI({
   emi3YrTotalPayable, emi3YrTotalInterest,
   emi5YrTotalPayable, emi5YrTotalInterest,
   emi7YrTotalPayable, emi7YrTotalInterest,
-  pageNumber = 10, totalPages = 13,
+  pageNumber = 10, totalPages = 13, proposalNote,
 }: Props) {
   const loanAmount = Math.round(totalCost * 0.8);
   const downPayment = Math.round(totalCost * 0.2);
 
   const plans = [
     {
-      tenure: '3 Years',
+      tenure: '36 Months',
       months: 36,
       emi: emi3Yr,
       totalPayable: emi3YrTotalPayable ?? emi3Yr * 36,
@@ -45,21 +48,21 @@ export default function LoanEMI({
       tag: 'Pay off fastest',
     },
     {
-      tenure: '5 Years',
-      months: 60,
+      tenure: '48 Months',
+      months: 48,
       emi: emi5Yr,
-      totalPayable: emi5YrTotalPayable ?? emi5Yr * 60,
-      totalInterest: emi5YrTotalInterest ?? emi5Yr * 60 - loanAmount,
+      totalPayable: emi5YrTotalPayable ?? emi5Yr * 48,
+      totalInterest: emi5YrTotalInterest ?? emi5Yr * 48 - loanAmount,
       icon: '⭐',
       highlight: true,
       tag: 'Most Popular',
     },
     {
-      tenure: '7 Years',
-      months: 84,
+      tenure: '60 Months',
+      months: 60,
       emi: emi7Yr,
-      totalPayable: emi7YrTotalPayable ?? emi7Yr * 84,
-      totalInterest: emi7YrTotalInterest ?? emi7Yr * 84 - loanAmount,
+      totalPayable: emi7YrTotalPayable ?? emi7Yr * 60,
+      totalInterest: emi7YrTotalInterest ?? emi7Yr * 60 - loanAmount,
       icon: '💰',
       highlight: false,
       tag: 'Lowest EMI',
@@ -149,7 +152,7 @@ export default function LoanEMI({
                 className="text-xs font-semibold tracking-widest uppercase mt-3 mb-1"
                 style={{ color: plan.highlight ? 'rgba(255,255,255,0.6)' : '#9ca3af' }}
               >
-                {plan.tenure} ({plan.months} months)
+                {plan.tenure}
               </p>
 
               <p
@@ -210,6 +213,8 @@ export default function LoanEMI({
             ))}
           </div>
         </div>
+
+        <ProposalNoteBlock placement="loan_emi" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={pageNumber} />

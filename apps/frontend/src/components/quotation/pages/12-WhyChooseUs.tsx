@@ -2,20 +2,28 @@
 
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
+import ProposalNoteBlock from '../ProposalNoteBlock';
 import type { TemplateConfig, TemplateReason, TemplateTestimonial } from '../../../types/quotation-template';
+import type { ProposalNote } from '@/constants/proposal-note';
 
-interface Props { quoteNumber: string; config?: TemplateConfig | null; pageNumber?: number; totalPages?: number }
+interface Props {
+  quoteNumber: string;
+  config?: TemplateConfig | null;
+  pageNumber?: number;
+  totalPages?: number;
+  proposalNote?: ProposalNote | null;
+}
+
+const EXCLUDED_REASON_TITLES = new Set(['Grade-A DCR Equipment', 'Fast Turnaround']);
 
 const DEFAULT_REASONS: TemplateReason[] = [
   { icon: '🏅', title: 'MNRE Certified Installer', desc: 'Officially empanelled with the Ministry of New & Renewable Energy. Our installations meet all government standards and qualify for central subsidies.' },
-  { icon: '🔬', title: 'Grade-A DCR Equipment', desc: 'We source only BIS/DCR certified Tier-1 solar panels and MNRE-listed inverters. No compromises on quality — ever.' },
   { icon: '📋', title: 'Subsidy Specialists', desc: 'Our team handles every step of PM Surya Ghar subsidy — from application to disbursement — at zero additional cost to you.' },
-  { icon: '🔧', title: 'Certified Installation Team', desc: 'All our engineers are certified solar installers with hands-on training from NISE/TERI. Safety-first approach on every project.' },
+  { icon: '🔧', title: 'Certified Installation Team', desc: 'All our engineers are certified solar installers with hands-on training. Safety-first approach on every project.' },
   { icon: '📊', title: 'Transparent Pricing', desc: 'No hidden charges. Detailed BOM and cost breakdown provided upfront. What you see in this proposal is exactly what you pay.' },
   { icon: '🛡️', title: '5-Year Workmanship Warranty', desc: 'We back our installations with a comprehensive 5-year workmanship warranty in addition to manufacturer warranties on all equipment.' },
   { icon: '📡', title: 'Remote Monitoring Included', desc: 'Real-time performance monitoring via cloud dashboard from day one. Track generation, savings, and carbon offset from your phone.' },
   { icon: '🤝', title: 'Dedicated Project Manager', desc: 'A dedicated project manager is assigned to every client — single point of contact from survey to commissioning and beyond.' },
-  { icon: '⚡', title: 'Fast Turnaround', desc: "From signed agreement to commissioned system in just 10–18 working days. India's fastest certified solar installation programme." },
 ];
 
 const DEFAULT_TESTIMONIALS: TemplateTestimonial[] = [
@@ -25,8 +33,11 @@ const DEFAULT_TESTIMONIALS: TemplateTestimonial[] = [
 
 const CARD_COLORS = ['#fef3c7','#dbeafe','#dcfce7','#ede9fe','#fce7f3','#fff7ed','#ecfeff','#f0fdf4','#eef3fb'];
 
-export default function WhyChooseUs({ quoteNumber, config, pageNumber = 12, totalPages = 13 }: Props) {
-  const reasons      = config?.whyReasons?.length    ? config.whyReasons    : DEFAULT_REASONS;
+export default function WhyChooseUs({
+  quoteNumber, config, pageNumber = 12, totalPages = 13, proposalNote,
+}: Props) {
+  const reasons = (config?.whyReasons?.length ? config.whyReasons : DEFAULT_REASONS)
+    .filter((r) => !EXCLUDED_REASON_TITLES.has(r.title));
   const testimonials = config?.testimonials?.length  ? config.testimonials  : DEFAULT_TESTIMONIALS;
   const companyName  = config?.companyName           ?? 'Rolling Energy';
 
@@ -43,7 +54,7 @@ export default function WhyChooseUs({ quoteNumber, config, pageNumber = 12, tota
             className="text-2xl font-bold"
             style={{ color: '#161c34', fontFamily: 'Poppins, sans-serif' }}
           >
-            {reasons.length} Reasons to Choose {companyName}
+            Reasons to Choose {companyName}
           </h2>
           <div className="mt-2 h-0.5 w-12" style={{ background: '#6690cc' }} />
         </div>
@@ -94,6 +105,8 @@ export default function WhyChooseUs({ quoteNumber, config, pageNumber = 12, tota
             </div>
           ))}
         </div>
+
+        <ProposalNoteBlock placement="why_choose_us" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={pageNumber} />

@@ -340,7 +340,7 @@ async function main() {
         ],
         aboutParagraphs: [
           "Rolling Energy is a premier Solar EPC (Engineering, Procurement & Construction) company committed to delivering world-class rooftop and ground-mounted solar solutions across India. Founded by industry veterans, we bring decades of combined experience in power systems, project management, and renewable energy.",
-          "We partner with India's leading panel and inverter manufacturers to source only Grade-A, BIS-certified equipment, ensuring every system we install delivers peak performance for 25+ years with minimal maintenance.",
+          "We partner with India's leading panel and inverter manufacturers to source only BIS-certified equipment, ensuring every system we install delivers peak performance for 25+ years with minimal maintenance.",
           "From a single rooftop installation to large commercial arrays, our integrated approach covers every stage — site survey, system design, procurement, installation, net metering registration, and ongoing AMC — under one roof.",
         ],
         aboutMission: "To accelerate India's transition to clean, renewable energy by making solar power accessible, affordable, and reliable for every home and business.",
@@ -369,7 +369,7 @@ async function main() {
         processTimelineText: 'Total Timeline: 10–18 Working Days',
         maintenanceServices: [
           { icon: '🔍', title: 'Annual Inspection', desc: 'Full system inspection twice a year — panel torque checks, wiring integrity, inverter health diagnostics, and earthing resistance testing.' },
-          { icon: '🧹', title: 'Panel Cleaning', desc: 'Scheduled panel surface cleaning using deionised water and soft brushes to maintain >98% optical transmission. Soiling can reduce output by 15–25%.' },
+          { icon: '🧹', title: 'Panel Cleaning', coverage: 'optional', desc: 'Scheduled panel surface cleaning using deionised water and soft brushes to maintain >98% optical transmission. Soiling can reduce output by 15–25%.' },
           { icon: '📡', title: 'Remote Monitoring', desc: 'Cloud-based performance monitoring with real-time generation data, fault alerts via SMS/email, and monthly performance reports sent to your inbox.' },
           { icon: '⚙️', title: 'Inverter Service', desc: 'Firmware updates, fan replacement, and electrolytic capacitor checks at manufacturer-recommended intervals to maximise inverter life.' },
           { icon: '🔌', title: 'Electrical Safety Check', desc: 'Annual DCDB/ACDB inspection, MCB/MCCB testing, SPD functionality verification, and earthing loop impedance measurement per IS:3043.' },
@@ -393,7 +393,6 @@ async function main() {
           'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
           'PM Surya Ghar subsidy is subject to DISCOM approval and government policy at time of commissioning.',
           'Bank loan/EMI arrangements are as per the lending institution\'s terms and discretion.',
-          'Any applicable DISCOM/net metering charges are additional and borne by the customer.',
         ],
         paymentModes: [
           { icon: '🏦', label: 'Bank Transfer (NEFT/RTGS)' },
@@ -401,16 +400,21 @@ async function main() {
           { icon: '💳', label: 'Demand Draft / Cheque' },
           { icon: '🏢', label: 'EMI via Bank Loan (see next page)' },
         ],
+        bankDetails: {
+          accountName: 'ROLLING ENERGY (OPC) PRIVATE LIMITED',
+          accountNumber: '041263400006460',
+          bankName: 'YES BANK LTD.',
+          accountType: 'Current Account',
+          ifscCode: 'YESB0000412',
+        },
         whyReasons: [
           { icon: '🏅', title: 'MNRE Certified Installer', desc: 'Officially empanelled with the Ministry of New & Renewable Energy. Our installations meet all government standards and qualify for central subsidies.' },
-          { icon: '🔬', title: 'Grade-A DCR Equipment', desc: 'We source only BIS/DCR certified Tier-1 solar panels and MNRE-listed inverters. No compromises on quality — ever.' },
           { icon: '📋', title: 'Subsidy Specialists', desc: 'Our team handles every step of PM Surya Ghar subsidy — from application to disbursement — at zero additional cost to you.' },
-          { icon: '🔧', title: 'Certified Installation Team', desc: 'All our engineers are certified solar installers with hands-on training from NISE/TERI. Safety-first approach on every project.' },
+          { icon: '🔧', title: 'Certified Installation Team', desc: 'All our engineers are certified solar installers with hands-on training. Safety-first approach on every project.' },
           { icon: '📊', title: 'Transparent Pricing', desc: 'No hidden charges. Detailed BOM and cost breakdown provided upfront. What you see in this proposal is exactly what you pay.' },
           { icon: '🛡️', title: '5-Year Workmanship Warranty', desc: 'We back our installations with a comprehensive 5-year workmanship warranty in addition to manufacturer warranties on all equipment.' },
           { icon: '📡', title: 'Remote Monitoring Included', desc: 'Real-time performance monitoring via cloud dashboard from day one. Track generation, savings, and carbon offset from your phone.' },
           { icon: '🤝', title: 'Dedicated Project Manager', desc: 'A dedicated project manager is assigned to every client — single point of contact from survey to commissioning and beyond.' },
-          { icon: '⚡', title: 'Fast Turnaround', desc: "From signed agreement to commissioned system in just 10–18 working days. India's fastest certified solar installation programme." },
         ],
         testimonials: [
           { name: 'Prakash M.', location: 'Pune, Maharashtra', text: '"Rolling Energy installed our 5 kW system in just 12 days. Subsidy received within a month. Excellent service!"' },

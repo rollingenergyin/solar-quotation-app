@@ -6,6 +6,13 @@
 import { PrismaClient } from '@prisma/client';
 import { ROI_DAYS_PER_YEAR } from '../constants/roi-generation.js';
 import { selectTemplateForQuotation } from './template-selection.service.js';
+import { shouldShowDepreciationPage } from './depreciation-eligibility.service.js';
+import {
+  resolvePanelWatt,
+  calcNumPanels,
+  parseQuickQuoteFromJson,
+  enrichTemplatePayload,
+} from './quick-quote-config.service.js';
 
 const prisma = new PrismaClient();
 
@@ -57,8 +64,9 @@ export async function getQuotationTemplateData(quotationId: string): Promise<Quo
 
   const systemKw = inputs.systemSizeKw ?? (q.totalWattage ? q.totalWattage / 1000 : 0);
   const totalWatts = Math.round(systemKw * 1000);
-  const panelWatt = 575;
-  const numPanels = Math.ceil(totalWatts / panelWatt);
+  const qqParsed = parseQuickQuoteFromJson(q.quotationDataJson);
+  const panelWatt = resolvePanelWatt(qqParsed.panelWattage ?? 'DEFAULT', qqParsed.panelWattageCustom);
+  const numPanels = calcNumPanels(systemKw, panelWatt);
 
   const peakSun = inputs.peakSunHours ?? 4;
   const efficiency = inputs.systemEfficiency ?? 0.8;
@@ -84,10 +92,10 @@ export async function getQuotationTemplateData(quotationId: string): Promise<Quo
   const emi7Yr = emiData.tenure7yr?.emi ?? 0;
   const emi3YrTotalPayable = emiData.tenure3yr?.totalPayable ?? emi3Yr * 36;
   const emi3YrTotalInterest = emiData.tenure3yr?.totalInterest ?? emi3Yr * 36 - Math.round(grossCost * 0.8);
-  const emi5YrTotalPayable = emiData.tenure5yr?.totalPayable ?? emi5Yr * 60;
-  const emi5YrTotalInterest = emiData.tenure5yr?.totalInterest ?? emi5Yr * 60 - Math.round(grossCost * 0.8);
-  const emi7YrTotalPayable = emiData.tenure7yr?.totalPayable ?? emi7Yr * 84;
-  const emi7YrTotalInterest = emiData.tenure7yr?.totalInterest ?? emi7Yr * 84 - Math.round(grossCost * 0.8);
+  const emi5YrTotalPayable = emiData.tenure5yr?.totalPayable ?? emi5Yr * 48;
+  const emi5YrTotalInterest = emiData.tenure5yr?.totalInterest ?? emi5Yr * 48 - Math.round(grossCost * 0.8);
+  const emi7YrTotalPayable = emiData.tenure7yr?.totalPayable ?? emi7Yr * 60;
+  const emi7YrTotalInterest = emiData.tenure7yr?.totalInterest ?? emi7Yr * 60 - Math.round(grossCost * 0.8);
 
   const now = new Date();
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -106,7 +114,7 @@ export async function getQuotationTemplateData(quotationId: string): Promise<Quo
     unit: qm.material.unit,
   }));
 
-  return {
+  const basePayload = {
     quoteNumber: q.quoteNumber,
     date: dateStr,
     validUntil: q.validUntil ? q.validUntil.toISOString().split('T')[0] : null,
@@ -119,6 +127,7 @@ export async function getQuotationTemplateData(quotationId: string): Promise<Quo
     systemSizeKw: systemKw,
     systemSizeWatts: totalWatts,
     numModules: numPanels,
+    panelWattageWp: panelWatt,
     inverterSizeKw: q.inverterSizeKw ?? systemKw,
     areaSquareFt: Math.round(systemKw * 80),
     dailyProductionKwh: Math.round((annualGenKwh / ROI_DAYS_PER_YEAR) * 10) / 10,
@@ -148,7 +157,7 @@ export async function getQuotationTemplateData(quotationId: string): Promise<Quo
     systemType: q.systemType,
     siteType: q.siteType,
     showSubsidy: q.systemType !== 'NON_DCR' && (q.siteType === 'RESIDENTIAL' || q.siteType === 'SOCIETY'),
-    showDepreciation: q.systemType === 'NON_DCR' && (q.siteType === 'COMMERCIAL' || q.siteType === 'INDUSTRIAL'),
+    showDepreciation: shouldShowDepreciationPage({ siteType: q.siteType }),
     sanctionedLoadKw: q.sanctionedLoadKw ?? null,
     sanctionedLoadIncreasedToKw: q.sanctionedLoadIncreasedToKw ?? null,
     depreciationTable: activeTemplate?.depreciationTable ?? [
@@ -160,4 +169,90 @@ export async function getQuotationTemplateData(quotationId: string): Promise<Quo
     depreciationNote: activeTemplate?.depreciationNote ?? 'This solar installation may qualify for accelerated depreciation benefits under applicable tax rules.',
     templateConfig: activeTemplate ?? null,
   };
+
+  const { parseCombinedFromJson, enrichSingleCostingSystems } = await import('./combined-quotation.service.js');
+  const combinedMeta = parseCombinedFromJson(q.quotationDataJson);
+
+  const enriched = enrichTemplatePayload(
+    basePayload,
+    systemKw,
+    q.quotationDataJson,
+    activeTemplate as Record<string, unknown> | null,
+  );
+
+  if (combinedMeta.quotationMode === 'COMBINED' && combinedMeta.combinedSummary) {
+    const c = combinedMeta.combinedSummary;
+    const peakSun = inputs.peakSunHours ?? 4;
+    const tariff = inputs.electricityRatePerUnit ?? 18;
+    const inflation = inputs.gridInflationPct ?? 3;
+    const combinedSystems = combinedMeta.combinedSingleCosting
+      ? enrichSingleCostingSystems(combinedMeta.combinedSystems, c, {
+          electricityRatePerUnit: tariff,
+          peakSunHours: peakSun,
+          gridInflationPct: inflation,
+        })
+      : combinedMeta.combinedSystems;
+
+    Object.assign(enriched, {
+      quotationMode: 'COMBINED',
+      combinedSystems,
+      combinedSummary: c,
+      combinedSingleCosting: combinedMeta.combinedSingleCosting,
+      systemSizeKw: c.systemSizeKw,
+      systemSizeWatts: Math.round(c.systemSizeKw * 1000),
+      baseCost: c.baseCost,
+      gstAmount: c.gstAmount,
+      totalCost: c.grossCost,
+      subsidyAmount: c.subsidyAmount,
+      netCost: c.netCost,
+      dailyProductionKwh: c.dailyProductionKwh,
+      monthlyProductionKwh: Math.round(c.annualProductionKwh / 12),
+      annualProductionKwh: c.annualProductionKwh,
+      monthlySavingsRs: Math.round(c.annualSavings / 12),
+      annualSavingsRs: c.annualSavings,
+      savings30YrRs: c.savings30YrRs,
+      breakevenYears: c.breakevenYears,
+    });
+  }
+
+  const { parseCostingOptionsFromJson } = await import('./costing-options.service.js');
+  const costingOptions = parseCostingOptionsFromJson(q.quotationDataJson);
+  if (costingOptions?.length) {
+    Object.assign(enriched, { costingOptions });
+    const primary = costingOptions[0];
+    Object.assign(enriched, {
+      systemType: primary.systemType,
+      siteType: primary.siteType,
+      showSubsidy: primary.showSubsidy,
+      baseCost: primary.baseCost,
+      gstAmount: primary.gstAmount,
+      totalCost: primary.grossCost,
+      subsidyAmount: primary.subsidyAmount,
+      netCost: primary.netCost,
+    });
+  }
+
+  const { applyGlobalProcessTimelineToPayload } = await import('./process-timeline.service.js');
+  const finalized = await applyGlobalProcessTimelineToPayload(prisma, enriched);
+
+  const json = (q.quotationDataJson as Record<string, unknown> | null) ?? {};
+  const timelineOverride = [
+    json.processTimelineText,
+    (json.templateOverrides as Record<string, unknown> | undefined)?.processTimelineText,
+  ]
+    .map((v) => (typeof v === 'string' ? v.trim() : ''))
+    .find(Boolean);
+  if (timelineOverride && finalized.templateConfig) {
+    finalized.templateConfig = {
+      ...(finalized.templateConfig as Record<string, unknown>),
+      processTimelineText: timelineOverride,
+    };
+  }
+
+  finalized.showDepreciation = shouldShowDepreciationPage({
+    siteType: (finalized.siteType as string | undefined) ?? q.siteType,
+    combinedSystems: combinedMeta.combinedSystems as Array<{ siteType?: string }> | undefined,
+  });
+
+  return finalized as QuotationTemplateData;
 }

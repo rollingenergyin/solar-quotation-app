@@ -6,6 +6,8 @@ import {
 } from 'recharts';
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
+import ProposalNoteBlock from '../ProposalNoteBlock';
+import type { ProposalNote } from '@/constants/proposal-note';
 
 interface Props {
   quoteNumber: string;
@@ -16,6 +18,10 @@ interface Props {
   gridInflationPct: number;
   pageNumber?: number;
   totalPages?: number;
+  /** Optional heading for per-system or combined ROI pages */
+  analysisTitle?: string;
+  analysisSubtitle?: string;
+  proposalNote?: ProposalNote | null;
 }
 
 const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -46,6 +52,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export default function ROIAnalysis({
   quoteNumber, netCost, annualSavingsRs, savings30YrRs, breakevenYears, gridInflationPct,
   pageNumber = 11, totalPages = 13,
+  analysisTitle, analysisSubtitle, proposalNote,
 }: Props) {
   // Generate 30-year cumulative data
   const chartData = Array.from({ length: 31 }, (_, year) => {
@@ -75,8 +82,11 @@ export default function ROIAnalysis({
             className="text-2xl font-bold"
             style={{ color: '#161c34', fontFamily: 'Poppins, sans-serif' }}
           >
-            30-Year Financial Analysis
+            {analysisTitle ?? '30-Year Financial Analysis'}
           </h2>
+          {analysisSubtitle && (
+            <p className="text-sm text-gray-500 mt-1">{analysisSubtitle}</p>
+          )}
           <div className="mt-2 h-0.5 w-12" style={{ background: '#6690cc' }} />
         </div>
 
@@ -120,10 +130,10 @@ export default function ROIAnalysis({
         {/* Chart */}
         <div
           className="rounded-2xl p-4 mb-5"
-          style={{ background: '#f9fafb', border: '1px solid #e5e7eb', height: '200px' }}
+          style={{ background: '#f9fafb', border: '1px solid #e5e7eb', height: '300px' }}
         >
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 4, bottom: 20 }}>
               <defs>
                 <linearGradient id="savingsGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#6690cc" stopOpacity={0.3} />
@@ -203,6 +213,8 @@ export default function ROIAnalysis({
             </div>
           </div>
         </div>
+
+        <ProposalNoteBlock placement="roi_analysis" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={pageNumber} />

@@ -54,6 +54,7 @@ interface QuotationInfo {
   inverterSizeKw?: number | null;
   sanctionedLoadKw?: number | null;
   generatedPdfPath?: string | null;
+  isPricingLocked?: boolean;
   customer: { name: string };
   site: { name?: string; address: string };
   createdBy: { name: string };
@@ -71,6 +72,32 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState('');
+  const [statusUpdating, setStatusUpdating] = useState(false);
+
+  const setQuotationStatus = async (status: string) => {
+    setStatusUpdating(true);
+    try {
+      await api(`/quotations/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+      setQuotation((q) => (q ? { ...q, status } : q));
+    } catch {
+      setError('Failed to update status');
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
+  const togglePricingLock = async () => {
+    if (!quotation) return;
+    try {
+      await api(`/quotations/${id}/pricing-lock`, {
+        method: 'PATCH',
+        body: JSON.stringify({ locked: !quotation.isPricingLocked }),
+      });
+      setQuotation((q) => (q ? { ...q, isPricingLocked: !q.isPricingLocked } : q));
+    } catch {
+      setError('Failed to update pricing lock');
+    }
+  };
 
   // ── Form state ──────────────────────────────────────────────────────────
   const [systemType, setSystemType]     = useState<'DCR' | 'NON_DCR'>('DCR');
@@ -106,7 +133,6 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
 
   useEffect(() => { loadQuotation(); }, [loadQuotation]);
 
-  // Auto-fill inverter size when system size changes (unless user has manually edited inverter)
   useEffect(() => {
     if (!inverterManuallyEdited && systemSizeKw) {
       const sys = parseFloat(systemSizeKw);
@@ -133,7 +159,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
       };
       if (systemSizeKw)    body.systemSizeKw           = parseFloat(systemSizeKw);
       if (inverterSizeKw)  body.inverterSizeKw         = parseFloat(inverterSizeKw);
-      else if (systemSizeKw) body.inverterSizeKw       = parseFloat(systemSizeKw); // Default to system size
+      else if (systemSizeKw) body.inverterSizeKw       = parseFloat(systemSizeKw);
       if (subsidyOverride && systemType === 'DCR' && siteType !== 'COMMERCIAL')
         body.subsidyAmountOverride = parseFloat(subsidyOverride);
       if (sanctionedLoadKw) body.sanctionedLoadKw = parseFloat(sanctionedLoadKw);
@@ -182,11 +208,31 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
           <span className={`text-xs px-3 py-1.5 rounded-full font-semibold ${
             quotation.status === 'ACCEPTED' ? 'bg-green-100 text-green-700' :
             quotation.status === 'SENT'     ? 'bg-blue-100 text-blue-700' :
+            quotation.status === 'REVIEW'   ? 'bg-amber-100 text-amber-800' :
             quotation.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
             'bg-gray-100 text-gray-600'
           }`}>{quotation.status}</span>
+          {quotation.isPricingLocked && (
+            <span className="text-xs px-2 py-1 rounded-full bg-red-50 text-red-600 font-medium">🔒 Pricing Locked</span>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
+            {quotation.status === 'DRAFT' && (
+              <button type="button" disabled={statusUpdating} onClick={() => setQuotationStatus('REVIEW')} className="text-xs px-3 py-1.5 rounded-lg border border-amber-200 text-amber-800 hover:bg-amber-50">
+                Submit for Review
+              </button>
+            )}
+            {quotation.status === 'REVIEW' && (
+              <button type="button" disabled={statusUpdating} onClick={() => setQuotationStatus('SENT')} className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50">
+                Approve & Send
+              </button>
+            )}
+            <button type="button" onClick={togglePricingLock} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
+              {quotation.isPricingLocked ? 'Unlock Pricing' : 'Lock Pricing'}
+            </button>
+            <Link href={`/sales/quotations/${id}/edit-pricing`} className="text-xs px-3 py-1.5 rounded-lg border border-sky-200 text-sky-700 hover:bg-sky-50">
+              Edit Pricing
+            </Link>
             {result && (
               <Link
                 href={`/quotation/${id}/print`}
@@ -444,7 +490,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
                         ${emiTab === t
                           ? 'bg-yellow-500 text-white border-yellow-500'
                           : 'border-gray-200 text-gray-600 hover:border-yellow-300'}`}>
-                      {t === '3yr' ? '3 Years' : t === '5yr' ? '5 Years' : '7 Years'}
+                      {t === '3yr' ? '36 Months' : t === '5yr' ? '48 Months ★' : '60 Months'}
                     </button>
                   ))}
                 </div>
@@ -478,9 +524,9 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
                     <tbody className="divide-y divide-gray-50">
                       {(
                         [
-                          ['3 Years (36 mo)', result.emi.tenure3yr],
-                          ['5 Years (60 mo)', result.emi.tenure5yr],
-                          ['7 Years (84 mo)', result.emi.tenure7yr],
+                          ['36 Months', result.emi.tenure3yr],
+                          ['48 Months ★', result.emi.tenure5yr],
+                          ['60 Months', result.emi.tenure7yr],
                         ] as [string, { emi: number; totalPayable: number; totalInterest: number }][]
                       ).map(([label, e]) => (
                         <tr key={label} className="hover:bg-gray-50">

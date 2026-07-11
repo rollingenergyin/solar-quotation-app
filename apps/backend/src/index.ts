@@ -1,8 +1,12 @@
 import express from 'express';
 import cors from 'cors';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { config } from './config/index.js';
 import routes from './routes/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
@@ -19,6 +23,14 @@ app.use(
 );
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve generated social media assets (JPGs and MP4s) as static files
+app.use('/assets', express.static(resolve(__dirname, '../assets'), {
+  setHeaders: (res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+  },
+}));
 
 app.use('/api', routes);
 
@@ -48,6 +60,16 @@ app.listen(config.port, async () => {
     await ensureDefaultTemplates();
   } catch (err) {
     console.error('[Default Templates] Failed to ensure default templates:', err);
+  }
+
+  try {
+    const { ensureProcessTimelineSettings } = await import('./services/process-timeline.service.js');
+    const { PrismaClient } = await import('@prisma/client');
+    const bootPrisma = new PrismaClient();
+    await ensureProcessTimelineSettings(bootPrisma);
+    await bootPrisma.$disconnect();
+  } catch (err) {
+    console.error('[Process Timeline] Failed to ensure global settings:', err);
   }
 
   // Solar Growth OS — start automation engine + event bus worker

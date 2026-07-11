@@ -2,9 +2,15 @@
 
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
+import ProposalNoteBlock from '../ProposalNoteBlock';
 import type { TemplateConfig, TemplateProcessStep } from '../../../types/quotation-template';
+import type { ProposalNote } from '@/constants/proposal-note';
 
-interface Props { quoteNumber: string; config?: TemplateConfig | null }
+interface Props {
+  quoteNumber: string;
+  config?: TemplateConfig | null;
+  proposalNote?: ProposalNote | null;
+}
 
 const DEFAULT_STEPS: TemplateProcessStep[] = [
   { step: '01', title: 'Site Survey', subtitle: 'Assessment & Planning', desc: 'Our certified engineers visit the site to assess roof structure, orientation, shading analysis, electrical load, and grid connection feasibility. A detailed site report is prepared as the foundation for system design.', icon: '📍', duration: '1–2 Days' },
@@ -15,7 +21,7 @@ const DEFAULT_STEPS: TemplateProcessStep[] = [
   { step: '06', title: 'Monitoring & AMC', subtitle: 'Lifetime Support', desc: 'Remote monitoring via cloud dashboard tracks real-time generation, consumption, and alerts. Our AMC programme ensures proactive maintenance, panel cleaning, and inverter health checks throughout the system life.', icon: '📊', duration: 'Ongoing' },
 ];
 
-export default function OurProcess({ quoteNumber, config }: Props) {
+export default function OurProcess({ quoteNumber, config, proposalNote }: Props) {
   const steps        = config?.processSteps?.length ? config.processSteps : DEFAULT_STEPS;
   const timelineText = config?.processTimelineText   ?? 'Total Timeline: 10–18 Working Days';
 
@@ -70,12 +76,6 @@ export default function OurProcess({ quoteNumber, config }: Props) {
                   >
                     {step.title}
                   </p>
-                  <span
-                    className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={{ background: '#eef3fb', color: '#3c5e94' }}
-                  >
-                    {step.duration}
-                  </span>
                 </div>
                 <p className="text-xs font-medium mb-1" style={{ color: '#6690cc' }}>{step.subtitle}</p>
                 <p className="text-xs text-gray-600 leading-relaxed">{step.desc}</p>
@@ -103,6 +103,7 @@ export default function OurProcess({ quoteNumber, config }: Props) {
             <p className="text-xs" style={{ color: '#6690cc' }}>End-to-End</p>
           </div>
         </div>
+        <ProposalNoteBlock placement="our_process" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={4} />

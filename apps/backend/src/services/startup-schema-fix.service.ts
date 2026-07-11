@@ -44,7 +44,21 @@ export async function runStartupSchemaFix() {
       ADD COLUMN IF NOT EXISTS "quotationDataJson"  JSONB,
       ADD COLUMN IF NOT EXISTS "generatedPdfPath"   TEXT,
       ADD COLUMN IF NOT EXISTS "parentQuotationId"  TEXT,
-      ADD COLUMN IF NOT EXISTS "version"            INTEGER NOT NULL DEFAULT 1;
+      ADD COLUMN IF NOT EXISTS "version"            INTEGER NOT NULL DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS "isPricingLocked"    BOOLEAN NOT NULL DEFAULT false;
+  `);
+
+  await exec(`
+    DO $$ BEGIN
+      ALTER TYPE "QuotationStatus" ADD VALUE 'REVIEW';
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
+
+  await exec(`
+    ALTER TABLE "quotation_global_settings"
+      ADD COLUMN IF NOT EXISTS "defaultProfitMarginPct" DOUBLE PRECISION NOT NULL DEFAULT 15,
+      ADD COLUMN IF NOT EXISTS "siteCostingRates" JSONB NOT NULL DEFAULT '{}';
   `);
 
   await exec(`
@@ -53,6 +67,15 @@ export async function runStartupSchemaFix() {
       "nextValue" INTEGER NOT NULL DEFAULT 1,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
       CONSTRAINT "quotation_sequence_pkey" PRIMARY KEY ("id")
+    );
+  `);
+
+  await exec(`
+    CREATE TABLE IF NOT EXISTS "quotation_global_settings" (
+      "id" TEXT NOT NULL DEFAULT 'default',
+      "processTimelineRanges" JSONB NOT NULL DEFAULT '[]',
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "quotation_global_settings_pkey" PRIMARY KEY ("id")
     );
   `);
 
@@ -388,6 +411,83 @@ export async function runStartupSchemaFix() {
     );
   `);
   await exec(`CREATE UNIQUE INDEX IF NOT EXISTS "analytics_snapshots_date_metric_dimension_key" ON "analytics_snapshots"("date","metric","dimension");`);
+
+  // ── Phase 10: Social Media Automation ────────────────────────────────────
+
+  await createEnum('SocialSegment', ['RESIDENTIAL','SOCIETY','COMMERCIAL','INDUSTRIAL','GROUND_MOUNT']);
+  await createEnum('SocialContentType', ['STATIC_POST','CAROUSEL','REEL']);
+  await createEnum('SocialPostStatus', ['DRAFT','PENDING_APPROVAL','APPROVED','REJECTED','SCHEDULED','POSTED','FAILED']);
+
+  await exec(`
+    CREATE TABLE IF NOT EXISTS "social_calendar_slots" (
+      "id" TEXT NOT NULL, "date" TIMESTAMP(3) NOT NULL, "slotType" TEXT NOT NULL,
+      "theme" TEXT NOT NULL, "segment" TEXT, "isNewsSlot" BOOLEAN NOT NULL DEFAULT false,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "social_calendar_slots_pkey" PRIMARY KEY ("id")
+    );
+  `);
+  await exec(`CREATE INDEX IF NOT EXISTS "social_calendar_slots_date_idx" ON "social_calendar_slots"("date");`);
+
+  await exec(`
+    CREATE TABLE IF NOT EXISTS "social_posts" (
+      "id" TEXT NOT NULL, "title" TEXT NOT NULL,
+      "segment" "SocialSegment" NOT NULL, "contentType" "SocialContentType" NOT NULL,
+      "status" "SocialPostStatus" NOT NULL DEFAULT 'DRAFT',
+      "captionEn" TEXT NOT NULL, "captionHi" TEXT NOT NULL, "captionMr" TEXT NOT NULL,
+      "hashtags" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      "visualConcept" TEXT NOT NULL, "mediaUrl" TEXT, "platforms" TEXT[] NOT NULL DEFAULT ARRAY['instagram','facebook']::TEXT[],
+      "scheduledAt" TIMESTAMP(3), "postedAt" TIMESTAMP(3),
+      "isNewsSlot" BOOLEAN NOT NULL DEFAULT false, "rejectionNote" TEXT,
+      "productionSpec" JSONB, "currentVersion" INTEGER NOT NULL DEFAULT 1,
+      "slotId" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "social_posts_pkey" PRIMARY KEY ("id")
+    );
+  `);
+  await exec(`CREATE UNIQUE INDEX IF NOT EXISTS "social_posts_slotId_key" ON "social_posts"("slotId") WHERE "slotId" IS NOT NULL;`);
+  await exec(`CREATE INDEX IF NOT EXISTS "social_posts_status_scheduledAt_idx" ON "social_posts"("status","scheduledAt");`);
+  await exec(`CREATE INDEX IF NOT EXISTS "social_posts_segment_contentType_idx" ON "social_posts"("segment","contentType");`);
+
+  await exec(`
+    CREATE TABLE IF NOT EXISTS "social_platform_credentials" (
+      "id" TEXT NOT NULL, "platform" TEXT NOT NULL, "displayName" TEXT NOT NULL,
+      "accessToken" TEXT NOT NULL, "refreshToken" TEXT, "pageId" TEXT,
+      "expiresAt" TIMESTAMP(3), "isActive" BOOLEAN NOT NULL DEFAULT true,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "social_platform_credentials_pkey" PRIMARY KEY ("id")
+    );
+  `);
+  await exec(`CREATE UNIQUE INDEX IF NOT EXISTS "social_platform_credentials_platform_key" ON "social_platform_credentials"("platform");`);
+
+  await exec(`
+    CREATE TABLE IF NOT EXISTS "social_post_analytics" (
+      "id" TEXT NOT NULL, "postId" TEXT NOT NULL, "platform" TEXT NOT NULL,
+      "likes" INTEGER NOT NULL DEFAULT 0, "comments" INTEGER NOT NULL DEFAULT 0,
+      "shares" INTEGER NOT NULL DEFAULT 0, "reach" INTEGER NOT NULL DEFAULT 0,
+      "clicks" INTEGER NOT NULL DEFAULT 0,
+      "fetchedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "social_post_analytics_pkey" PRIMARY KEY ("id")
+    );
+  `);
+  await exec(`CREATE UNIQUE INDEX IF NOT EXISTS "social_post_analytics_postId_key" ON "social_post_analytics"("postId");`);
+
+  // Idempotent column additions for social_posts
+  await exec(`ALTER TABLE "social_posts" ADD COLUMN IF NOT EXISTS "productionSpec" JSONB;`);
+  await exec(`ALTER TABLE "social_posts" ADD COLUMN IF NOT EXISTS "currentVersion" INTEGER NOT NULL DEFAULT 1;`);
+
+  await exec(`
+    CREATE TABLE IF NOT EXISTS "social_post_versions" (
+      "id" TEXT NOT NULL, "postId" TEXT NOT NULL, "version" INTEGER NOT NULL,
+      "label" TEXT NOT NULL, "snapshot" JSONB NOT NULL,
+      "editedBy" TEXT, "changeNote" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "social_post_versions_pkey" PRIMARY KEY ("id"),
+      CONSTRAINT "social_post_versions_postId_fkey" FOREIGN KEY ("postId") REFERENCES "social_posts"("id") ON DELETE CASCADE
+    );
+  `);
+  await exec(`CREATE UNIQUE INDEX IF NOT EXISTS "social_post_versions_postId_version_key" ON "social_post_versions"("postId","version");`);
+  await exec(`CREATE INDEX IF NOT EXISTS "social_post_versions_postId_idx" ON "social_post_versions"("postId");`);
 
   await prisma.$disconnect();
 }

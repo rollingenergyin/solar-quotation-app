@@ -10,7 +10,8 @@ const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '⊞' },
   { href: '/finance/dashboard', label: 'Finance Panel', icon: '💰' },
   // Solar Growth OS
-  { href: '/admin/crm', label: 'CRM Panel', icon: '🎯' },
+  { href: '/admin/crm',    label: 'CRM Panel',    icon: '🎯' },
+  { href: '/admin/social', label: 'Social Media',  icon: '📱' },
   // Existing
   { href: '/admin/users', label: 'Sales Users', icon: '👥' },
   { href: '/admin/quotations', label: 'All Quotations', icon: '📋' },

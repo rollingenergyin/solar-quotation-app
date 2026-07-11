@@ -2,6 +2,10 @@
 
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
+import ProposalNoteBlock from '../ProposalNoteBlock';
+import type { TemplateConfig } from '../../../types/quotation-template';
+import { getNoSubsidyBenefitsNote } from '../CostingSharedBlocks';
+import type { ProposalNote } from '@/constants/proposal-note';
 
 interface Props {
   quoteNumber: string;
@@ -14,8 +18,10 @@ interface Props {
   showSubsidy?: boolean;
   systemType?: 'DCR' | 'NON_DCR';
   siteType?: 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL';
+  config?: TemplateConfig | null;
   pageNumber?: number;
   totalPages?: number;
+  proposalNote?: ProposalNote | null;
 }
 
 const fmt = (n: number) =>
@@ -35,16 +41,18 @@ function subsidySchemeLabel(siteType?: string) {
 
 export default function CostBreakdown({
   quoteNumber, systemSizeKw, baseCost, gstAmount, totalCost, subsidyAmount, netCost,
-  showSubsidy = true, systemType = 'DCR', siteType = 'RESIDENTIAL',
-  pageNumber = 8, totalPages = 13,
+  showSubsidy = true, systemType = 'DCR', siteType = 'RESIDENTIAL', config,
+  pageNumber = 8, totalPages = 13, proposalNote,
 }: Props) {
   const costPerWatt = baseCost / (systemSizeKw * 1000);
-  const isDCR = systemType === 'DCR';
+  const noSubsidyNote = !showSubsidy
+    ? getNoSubsidyBenefitsNote({ systemType, siteType })
+    : null;
 
   const baseRows = [
     {
       label: 'Base System Cost (Materials + Labour)',
-      desc: `${systemSizeKw} kW system — panels, inverter, structure, BOS, installation`,
+      desc: `Cost per watt — ₹${costPerWatt.toFixed(1)} / Wp`,
       amount: baseCost,
       type: 'normal',
     },
@@ -56,9 +64,11 @@ export default function CostBreakdown({
     },
     {
       label: showSubsidy ? 'Total Cost (Pre-Subsidy)' : 'Total Cost (incl. GST)',
-      desc: showSubsidy ? 'Gross payable amount before government subsidy' : 'Total payable amount including all taxes',
+      desc: showSubsidy
+        ? 'Amount payable to Rolling Energy'
+        : 'Total payable amount including all taxes',
       amount: totalCost,
-      type: 'subtotal',
+      type: 'payable',
     },
   ];
 
@@ -69,14 +79,14 @@ export default function CostBreakdown({
     type: 'discount',
   }] : [];
 
-  const totalRow = [{
-    label: 'Net Payable Amount',
-    desc: showSubsidy ? 'Final cost after all deductions — this is what you pay' : 'Total cost — this is what you pay',
+  const effectiveRow = showSubsidy ? [{
+    label: 'Effective Cost (After Subsidy)',
+    desc: 'Your net cost once the government subsidy is credited to your bank account',
     amount: netCost,
-    type: 'total',
-  }];
+    type: 'effective',
+  }] : [];
 
-  const rows = [...baseRows, ...subsidyRow, ...totalRow];
+  const rows = [...baseRows, ...subsidyRow, ...effectiveRow];
 
   return (
     <div className="quotation-page flex flex-col" style={{ background: '#ffffff' }}>
@@ -102,18 +112,6 @@ export default function CostBreakdown({
             className="rounded-xl px-5 py-3 flex items-center gap-3"
             style={{ background: '#eef3fb', border: '1px solid #d5e3f5' }}
           >
-            <span style={{ fontSize: '24px' }}>⚡</span>
-            <div>
-              <p className="text-xs text-gray-500">Effective Cost per Watt</p>
-              <p className="text-xl font-bold" style={{ color: '#161c34', fontFamily: 'Poppins, sans-serif' }}>
-                ₹{costPerWatt.toFixed(1)} / Wp
-              </p>
-            </div>
-          </div>
-          <div
-            className="rounded-xl px-5 py-3 flex items-center gap-3"
-            style={{ background: '#eef3fb', border: '1px solid #d5e3f5' }}
-          >
             <span style={{ fontSize: '24px' }}>📐</span>
             <div>
               <p className="text-xs text-gray-500">System Capacity</p>
@@ -122,71 +120,51 @@ export default function CostBreakdown({
               </p>
             </div>
           </div>
-          {/* System type badge */}
-          <div
-            className="rounded-xl px-5 py-3 flex items-center gap-3"
-            style={{
-              background: isDCR ? '#dcfce7' : '#fef3c7',
-              border: `1px solid ${isDCR ? '#bbf7d0' : '#fde68a'}`,
-            }}
-          >
-            <span style={{ fontSize: '24px' }}>{isDCR ? '🏛️' : '🏭'}</span>
-            <div>
-              <p className="text-xs text-gray-500">System Type</p>
-              <p className="text-sm font-bold" style={{ color: isDCR ? '#15803d' : '#92400e', fontFamily: 'Poppins, sans-serif' }}>
-                {isDCR ? 'DCR System' : 'Non-DCR System'}
-              </p>
-              <p className="text-xs" style={{ color: isDCR ? '#16a34a' : '#b45309' }}>
-                {siteLabel(siteType)}
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Cost table */}
         <div className="quotation-no-break rounded-2xl overflow-hidden mb-6" style={{ border: '1px solid #e5e7eb' }}>
-          {rows.map((row) => {
-            const isTotal  = row.type === 'total';
-            const isSubtot = row.type === 'subtotal';
-            const isDisc   = row.type === 'discount';
+          {rows.map((row, idx) => {
+            const isPayable   = row.type === 'payable';
+            const isEffective = row.type === 'effective';
+            const isDisc      = row.type === 'discount';
+            const isLast      = idx === rows.length - 1;
 
             return (
               <div
                 key={row.label}
                 className="flex items-center justify-between px-6 py-4"
                 style={{
-                  background: isTotal   ? 'linear-gradient(135deg, #161c34, #2c4570)'
-                             : isSubtot ? '#f0f4fb'
-                             : isDisc   ? '#f0fdf4'
+                  background: isPayable   ? '#eef3fb'
+                             : isDisc    ? '#f0fdf4'
+                             : isEffective ? '#f9fafb'
                              : '#ffffff',
-                  borderBottom: isTotal ? 'none' : '1px solid #f3f4f6',
+                  borderBottom: isLast ? 'none' : '1px solid #f3f4f6',
+                  borderTop: isPayable ? '2px solid #6690cc' : undefined,
                 }}
               >
                 <div>
                   <p
                     className="text-sm font-semibold leading-tight"
                     style={{
-                      color: isTotal ? '#ffffff' : isDisc ? '#16a34a' : '#161c34',
+                      color: isDisc ? '#16a34a' : isPayable ? '#2c4570' : '#161c34',
                       fontFamily: 'Poppins, sans-serif',
                     }}
                   >
                     {row.label}
                   </p>
-                  <p
-                    className="text-xs mt-0.5"
-                    style={{ color: isTotal ? 'rgba(255,255,255,0.6)' : '#9ca3af' }}
-                  >
+                  <p className="text-xs mt-0.5" style={{ color: '#9ca3af' }}>
                     {row.desc}
                   </p>
                 </div>
                 <p
                   className="text-lg font-bold flex-shrink-0 ml-4"
                   style={{
-                    color: isTotal   ? '#6690cc'
+                    color: isPayable ? '#6690cc'
                          : isDisc    ? '#16a34a'
-                         : isSubtot  ? '#161c34'
-                         : '#374151',
+                         : '#161c34',
                     fontFamily: 'Poppins, sans-serif',
+                    fontSize: isPayable ? '20px' : undefined,
                   }}
                 >
                   {row.amount < 0 ? `− ${fmt(-row.amount)}` : fmt(row.amount)}
@@ -213,26 +191,36 @@ export default function CostBreakdown({
                 Rolling Energy handles all subsidy paperwork, DISCOM coordination, and documentation
                 end-to-end at no additional charge.
               </p>
+              <p className="text-xs text-gray-600 mt-2 leading-relaxed">
+                The subsidy shown is based on the current scheme. At the time of commissioning, Rolling Energy
+                will facilitate the subsidy application process for whichever government subsidy scheme is
+                available and applicable, subject to prevailing regulations and eligibility.
+              </p>
             </div>
           </div>
-        ) : (
+        ) : noSubsidyNote ? (
           <div
             className="rounded-xl px-5 py-4 flex items-start gap-3"
-            style={{ background: '#fef3c7', border: '1px solid #fde68a' }}
+            style={
+              noSubsidyNote.positive
+                ? { background: '#eef3fb', border: '1px solid #d5e3f5' }
+                : { background: '#fef3c7', border: '1px solid #fde68a' }
+            }
           >
-            <span style={{ fontSize: '20px' }}>💡</span>
+            <span style={{ fontSize: '20px' }}>{noSubsidyNote.icon}</span>
             <div>
-              <p className="text-sm font-semibold" style={{ color: '#92400e' }}>
-                {systemType === 'NON_DCR' ? 'Non-DCR System — No Government Subsidy' : 'Commercial Installation — No Direct Subsidy'}
+              <p
+                className="text-sm font-semibold"
+                style={{ color: noSubsidyNote.positive ? '#2c4570' : '#92400e' }}
+              >
+                {noSubsidyNote.title}
               </p>
-              <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-                {systemType === 'NON_DCR'
-                  ? 'Non-DCR (non-domestic content requirement) systems do not qualify for PM Surya Ghar subsidies. However, this system may qualify for accelerated depreciation benefits — see the Depreciation page for details.'
-                  : 'Commercial solar installations do not qualify for direct PM Surya Ghar subsidies. However, significant savings through net metering and potential depreciation benefits are available.'}
-              </p>
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">{noSubsidyNote.body}</p>
             </div>
           </div>
-        )}
+        ) : null}
+
+        <ProposalNoteBlock placement="cost_breakdown" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={pageNumber} />

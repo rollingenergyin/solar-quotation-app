@@ -44,7 +44,7 @@ const BASE_TEMPLATE = {
   ],
   aboutParagraphs: [
     'Rolling Energy is a premier Solar EPC (Engineering, Procurement & Construction) company committed to delivering world-class rooftop and ground-mounted solar solutions across India. Founded by industry veterans, we bring decades of combined experience in power systems, project management, and renewable energy.',
-    'We partner with India\'s leading panel and inverter manufacturers to source only Grade-A, BIS-certified equipment, ensuring every system we install delivers peak performance for 25+ years with minimal maintenance.',
+    'We partner with India\'s leading panel and inverter manufacturers to source only BIS-certified equipment, ensuring every system we install delivers peak performance for 25+ years with minimal maintenance.',
     'From a single rooftop installation to large commercial arrays, our integrated approach covers every stage — site survey, system design, procurement, installation, net metering registration, and ongoing AMC — under one roof.',
   ],
   aboutMission: "To accelerate India's transition to clean, renewable energy by making solar power accessible, affordable, and reliable for every home and business.",
@@ -73,7 +73,7 @@ const BASE_TEMPLATE = {
   processTimelineText: 'Total Timeline: 10–18 Working Days',
   maintenanceServices: [
     { icon: '🔍', title: 'Annual Inspection', desc: 'Full system inspection twice a year.' },
-    { icon: '🧹', title: 'Panel Cleaning', desc: 'Scheduled panel surface cleaning to maintain >98% optical transmission.' },
+    { icon: '🧹', title: 'Panel Cleaning', coverage: 'optional', desc: 'Scheduled panel surface cleaning to maintain >98% optical transmission.' },
     { icon: '📡', title: 'Remote Monitoring', desc: 'Cloud-based performance monitoring with real-time generation data.' },
     { icon: '⚙️', title: 'Inverter Service', desc: 'Firmware updates and manufacturer-recommended maintenance.' },
     { icon: '🔌', title: 'Electrical Safety Check', desc: 'Annual DCDB/ACDB inspection and earthing verification.' },
@@ -96,7 +96,6 @@ const BASE_TEMPLATE = {
     'Quotation valid for 30 days from the date of issue.',
     'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
     'Bank loan/EMI arrangements are as per the lending institution\'s terms and discretion.',
-    'Any applicable DISCOM/net metering charges are additional and borne by the customer.',
   ],
   paymentModes: [
     { icon: '🏦', label: 'Bank Transfer (NEFT/RTGS)' },
@@ -104,16 +103,21 @@ const BASE_TEMPLATE = {
     { icon: '💳', label: 'Demand Draft / Cheque' },
     { icon: '🏢', label: 'EMI via Bank Loan (see next page)' },
   ],
+  bankDetails: {
+    accountName: 'ROLLING ENERGY (OPC) PRIVATE LIMITED',
+    accountNumber: '041263400006460',
+    bankName: 'YES BANK LTD.',
+    accountType: 'Current Account',
+    ifscCode: 'YESB0000412',
+  },
   whyReasons: [
     { icon: '🏅', title: 'MNRE Certified Installer', desc: 'Officially empanelled with the Ministry of New & Renewable Energy.' },
-    { icon: '🔬', title: 'Grade-A DCR Equipment', desc: 'We source only BIS/DCR certified Tier-1 solar panels and MNRE-listed inverters.' },
     { icon: '📋', title: 'Subsidy Specialists', desc: 'Our team handles every step of PM Surya Ghar subsidy at zero additional cost.' },
     { icon: '🔧', title: 'Certified Installation Team', desc: 'All our engineers are certified solar installers with hands-on training.' },
     { icon: '📊', title: 'Transparent Pricing', desc: 'No hidden charges. Detailed BOM and cost breakdown provided upfront.' },
     { icon: '🛡️', title: '5-Year Workmanship Warranty', desc: 'Comprehensive 5-year workmanship warranty on all installations.' },
     { icon: '📡', title: 'Remote Monitoring Included', desc: 'Real-time performance monitoring via cloud dashboard from day one.' },
     { icon: '🤝', title: 'Dedicated Project Manager', desc: 'Single point of contact from survey to commissioning and beyond.' },
-    { icon: '⚡', title: 'Fast Turnaround', desc: 'From signed agreement to commissioned system in 10–18 working days.' },
   ],
   testimonials: [
     { name: 'Prakash M.', location: 'Pune, Maharashtra', text: '"Rolling Energy installed our 5 kW system in just 12 days. Excellent service!"' },
@@ -146,7 +150,6 @@ const DEFAULT_TEMPLATES = [
       'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
       'PM Surya Ghar Muft Bijli Yojana subsidy is subject to DISCOM approval and government policy at time of commissioning. Residential subsidy: ₹30k (1 kW), ₹60k (2 kW), ₹78k (3–10 kW).',
       'Bank loan/EMI arrangements are as per the lending institution\'s terms and discretion.',
-      'Any applicable DISCOM/net metering charges are additional and borne by the customer.',
     ],
   },
   {
@@ -166,7 +169,6 @@ const DEFAULT_TEMPLATES = [
       'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
       'Non-DCR systems do not qualify for PM Surya Ghar subsidy. Depreciation benefits may apply for business use — consult your tax advisor.',
       'Bank loan/EMI arrangements are as per the lending institution\'s terms and discretion.',
-      'Any applicable DISCOM/net metering charges are additional and borne by the customer.',
     ],
   },
   {
@@ -185,7 +187,6 @@ const DEFAULT_TEMPLATES = [
       'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
       'PM Surya Ghar housing society subsidy (₹18,000 per kW) is subject to DISCOM approval and government policy at time of commissioning.',
       'Bank loan/EMI arrangements are as per the lending institution\'s terms and discretion.',
-      'Any applicable DISCOM/net metering charges are additional and borne by the society.',
     ],
   },
   {
@@ -205,7 +206,6 @@ const DEFAULT_TEMPLATES = [
       'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
       'Non-DCR systems do not qualify for PM Surya Ghar subsidy. Depreciation benefits may apply — consult your tax advisor.',
       'Bank loan/EMI arrangements are as per the lending institution\'s terms and discretion.',
-      'Any applicable DISCOM/net metering charges are additional and borne by the society.',
     ],
   },
   {
@@ -225,7 +225,6 @@ const DEFAULT_TEMPLATES = [
       'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
       'Commercial installations do not qualify for PM Surya Ghar subsidy. Depreciation/business expense benefits may apply — consult your tax advisor.',
       'Bank loan/EMI arrangements are as per the lending institution\'s terms and discretion.',
-      'Any applicable DISCOM/net metering charges are additional and borne by the customer.',
     ],
   },
   {
@@ -245,7 +244,6 @@ const DEFAULT_TEMPLATES = [
       'Prices subject to revision if material costs change significantly (>5%) before order confirmation.',
       'Industrial installations do not qualify for PM Surya Ghar subsidy. Depreciation benefits may apply for business use — consult your tax advisor.',
       'Bank loan/EMI arrangements are as per the lending institution\'s terms and discretion.',
-      'Any applicable DISCOM/net metering charges are additional and borne by the customer.',
     ],
   },
 ];
@@ -306,6 +304,7 @@ export async function ensureDefaultTemplates(): Promise<void> {
         paymentMilestones: base.paymentMilestones,
         paymentTermsBullets,
         paymentModes: base.paymentModes,
+        bankDetails: base.bankDetails,
         whyReasons: base.whyReasons,
         testimonials: base.testimonials,
         certifications: base.certifications,

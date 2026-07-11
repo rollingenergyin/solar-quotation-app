@@ -19,11 +19,15 @@
     "postinstall": "npm run db:generate -w backend"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
     "@types/react": "18.2.79",
-    "@types/react-dom": "18.2.25"
+    "@types/react-dom": "18.2.25",
+    "concurrently": "^8.2.2"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "puppeteer": "^24.40.0",
+    "sharp": "^0.34.5"
   }
 }

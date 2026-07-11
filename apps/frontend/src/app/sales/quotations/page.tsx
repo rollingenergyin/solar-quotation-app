@@ -26,6 +26,7 @@ export default function SavedQuotationsPage() {
   const [list, setList] = useState<SavedQuotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -39,6 +40,19 @@ export default function SavedQuotationsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const duplicateQuotation = async (id: string) => {
+    setDuplicating(id);
+    try {
+      const res = await api<{ id: string; quoteNumber: string }>(`/quotations/${id}/duplicate`, { method: 'POST' });
+      await load();
+      window.open(`/quotation/${res.id}/print`, '_blank');
+    } catch {
+      alert('Failed to duplicate quotation');
+    } finally {
+      setDuplicating(null);
+    }
+  };
 
   const deleteQuotation = async (id: string, quoteNumber: string) => {
     if (!confirm(`Delete quotation ${quoteNumber}? This cannot be undone.`)) return;
@@ -104,6 +118,17 @@ export default function SavedQuotationsPage() {
                     <Link href={`/sales/quotations/${q.id}/edit`} className="text-sm font-medium text-blue-600 hover:text-blue-700 py-2 px-3 rounded-lg bg-blue-50">
                       Edit
                     </Link>
+                    <Link href={`/sales/quotations/${q.id}/edit-pricing`} className="text-sm font-medium text-sky-600 py-2 px-3 rounded-lg bg-sky-50">
+                      Pricing
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => duplicateQuotation(q.id)}
+                      disabled={duplicating === q.id}
+                      className="text-sm font-medium text-emerald-600 py-2 px-3 rounded-lg bg-emerald-50 disabled:opacity-50"
+                    >
+                      {duplicating === q.id ? '…' : 'Duplicate'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => deleteQuotation(q.id, q.quoteNumber)}
@@ -153,6 +178,10 @@ export default function SavedQuotationsPage() {
                         <div className="flex items-center justify-end gap-2">
                           <Link href={`/quotation/${q.id}/print`} target="_blank" className="text-xs font-medium text-gray-600 hover:text-gray-900">View</Link>
                           <Link href={`/sales/quotations/${q.id}/edit`} className="text-xs font-medium text-blue-600 hover:text-blue-700">Edit</Link>
+                          <Link href={`/sales/quotations/${q.id}/edit-pricing`} className="text-xs font-medium text-sky-600">Pricing</Link>
+                          <button type="button" onClick={() => duplicateQuotation(q.id)} disabled={duplicating === q.id} className="text-xs font-medium text-emerald-600 disabled:opacity-50">
+                            {duplicating === q.id ? '…' : 'Duplicate'}
+                          </button>
                           <button type="button" onClick={() => deleteQuotation(q.id, q.quoteNumber)} disabled={deleting === q.id} className="text-xs font-medium text-red-500 hover:text-red-700 disabled:opacity-50">
                             {deleting === q.id ? '…' : 'Delete'}
                           </button>

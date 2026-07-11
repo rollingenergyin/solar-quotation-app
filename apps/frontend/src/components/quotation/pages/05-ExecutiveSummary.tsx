@@ -2,6 +2,10 @@
 
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
+import ProposalNoteBlock from '../ProposalNoteBlock';
+import { PmSuryaGharNote } from '../CostingSharedBlocks';
+import type { CostingOptionCalculated } from '@/constants/costing-options';
+import type { ProposalNote } from '@/constants/proposal-note';
 
 interface Props {
   quoteNumber: string;
@@ -19,6 +23,12 @@ interface Props {
   netCost: number;
   sanctionedLoadKw?: number | null;
   sanctionedLoadIncreasedToKw?: number | null;
+  panelWattageWp?: number;
+  totalPages?: number;
+  proposalNote?: ProposalNote | null;
+  hideSanctionedLoadAssessment?: boolean;
+  /** Shown when comparing 2–4 alternative costing options (subsidy-eligible systems). */
+  subsidyNoteOption?: CostingOptionCalculated | null;
 }
 
 const fmt = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -60,11 +70,13 @@ export default function ExecutiveSummary({
   quoteNumber, systemSizeKw, inverterSizeKw, numModules, areaSquareFt, dailyProductionKwh,
   monthlyProductionKwh, annualProductionKwh, monthlySavingsRs, annualSavingsRs,
   savings30YrRs, breakevenYears, netCost, sanctionedLoadKw, sanctionedLoadIncreasedToKw,
+  panelWattageWp, totalPages = 13, proposalNote, hideSanctionedLoadAssessment = false,
+  subsidyNoteOption,
 }: Props) {
   const loadSufficient = sanctionedLoadKw != null ? systemSizeKw <= sanctionedLoadKw : null;
   return (
     <div className="quotation-page flex flex-col" style={{ background: '#ffffff' }}>
-      <QuotationHeader quoteNumber={quoteNumber} pageTitle="Executive Summary" pageNumber={5} totalPages={13} />
+      <QuotationHeader quoteNumber={quoteNumber} pageTitle="Executive Summary" pageNumber={5} totalPages={totalPages} />
 
       <div className="flex-1 px-12 py-6" style={{ paddingBottom: '36px' }}>
         <div className="mb-6">
@@ -88,7 +100,11 @@ export default function ExecutiveSummary({
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3">
             <Card label="Proposed Solar Plant Capacity" value={String(systemSizeKw)} unit="kW" accent />
             <Card label="Proposed Inverter Capacity" value={String(inverterSizeKw)} unit="kW" />
-            <Card label="Solar Modules" value={String(numModules)} unit="Panels" />
+            <Card
+              label="Solar Modules"
+              value={String(numModules)}
+              unit={panelWattageWp ? `× ${panelWattageWp} W` : 'Panels'}
+            />
             <Card label="Roof Area Required" value={fmt(areaSquareFt)} unit="sq.ft" />
             <Card label="Net System Cost" value={`₹${fmt(netCost)}`} />
           </div>
@@ -120,7 +136,8 @@ export default function ExecutiveSummary({
         </div>
 
         {/* Sanctioned Load Assessment */}
-        {(sanctionedLoadKw != null || sanctionedLoadIncreasedToKw != null) && (
+        {!hideSanctionedLoadAssessment &&
+          (sanctionedLoadKw != null || sanctionedLoadIncreasedToKw != null) && (
           <div
             className="mb-4 rounded-xl px-5 py-3 flex items-start gap-3"
             style={{
@@ -184,7 +201,7 @@ export default function ExecutiveSummary({
 
         {/* Environmental */}
         <div
-          className="rounded-2xl px-6 py-4 flex items-center justify-between"
+          className="rounded-2xl px-6 py-4 flex items-center justify-between mb-5"
           style={{ background: 'linear-gradient(135deg, #161c34, #1e2f4d)' }}
         >
           <div>
@@ -198,6 +215,14 @@ export default function ExecutiveSummary({
           </div>
           <span style={{ fontSize: '36px' }}>🌿</span>
         </div>
+
+        {subsidyNoteOption?.showSubsidy && (
+          <div className="mb-5">
+            <PmSuryaGharNote option={subsidyNoteOption} />
+          </div>
+        )}
+
+        <ProposalNoteBlock placement="executive_summary" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={5} />

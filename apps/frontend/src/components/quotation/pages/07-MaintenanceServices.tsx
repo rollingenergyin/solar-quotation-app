@@ -2,18 +2,22 @@
 
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
+import ProposalNoteBlock from '../ProposalNoteBlock';
 import type { TemplateConfig, TemplateService, TemplateWarranty } from '../../../types/quotation-template';
+import { warrantyItemHasAlternatives } from '@/constants/warranty-items';
+import type { ProposalNote } from '@/constants/proposal-note';
 
 interface Props {
   quoteNumber: string;
   config?: TemplateConfig | null;
   pageNumber?: number;
   totalPages?: number;
+  proposalNote?: ProposalNote | null;
 }
 
 const DEFAULT_SERVICES: TemplateService[] = [
   { icon: '🔍', title: 'Annual Inspection', desc: 'Full system inspection twice a year — panel torque checks, wiring integrity, inverter health diagnostics, and earthing resistance testing.' },
-  { icon: '🧹', title: 'Panel Cleaning', desc: 'Scheduled panel surface cleaning using deionised water and soft brushes to maintain >98% optical transmission. Soiling can reduce output by 15–25%.' },
+  { icon: '🧹', title: 'Panel Cleaning', coverage: 'optional', desc: 'Scheduled panel surface cleaning using deionised water and soft brushes to maintain >98% optical transmission. Soiling can reduce output by 15–25%.' },
   { icon: '📡', title: 'Remote Monitoring', desc: 'Cloud-based performance monitoring with real-time generation data, fault alerts via SMS/email, and monthly performance reports sent to your inbox.' },
   { icon: '⚙️', title: 'Inverter Service', desc: 'Firmware updates, fan replacement, and electrolytic capacitor checks at manufacturer-recommended intervals to maximise inverter life.' },
   { icon: '🔌', title: 'Electrical Safety Check', desc: 'Annual DCDB/ACDB inspection, MCB/MCCB testing, SPD functionality verification, and earthing loop impedance measurement per IS:3043.' },
@@ -29,7 +33,41 @@ const DEFAULT_WARRANTIES: TemplateWarranty[] = [
   { item: 'DC/AC Cables & Connectors', warranty: 'Lifetime (as per IS specification)' },
 ];
 
-export default function MaintenanceServices({ quoteNumber, config, pageNumber = 7, totalPages = 13 }: Props) {
+function WarrantyInlineOr() {
+  return (
+    <span
+      className="inline-flex items-center justify-center text-[8px] font-bold tracking-widest uppercase rounded-full px-1.5 py-0.5 my-0.5"
+      style={{
+        color: '#ffffff',
+        background: 'linear-gradient(135deg, #161c34, #6690cc)',
+        fontFamily: 'Poppins, sans-serif',
+      }}
+    >
+      or
+    </span>
+  );
+}
+
+function WarrantyAlternativesStack({ values }: { values: string[] }) {
+  const parts = values.map((v) => v.trim()).filter(Boolean);
+  if (!parts.length) return <span className="text-gray-300">—</span>;
+  if (parts.length === 1) return <span>{parts[0]}</span>;
+
+  return (
+    <div className="space-y-0.5">
+      {parts.map((part, i) => (
+        <div key={i} className="leading-snug">
+          {i > 0 && <WarrantyInlineOr />}
+          <div>{part}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function MaintenanceServices({
+  quoteNumber, config, pageNumber = 7, totalPages = 13, proposalNote,
+}: Props) {
   const warrantyYears = config?.panelWarrantyYears ?? 25;
 
   const services   = config?.maintenanceServices?.length ? config.maintenanceServices : DEFAULT_SERVICES;
@@ -39,7 +77,15 @@ export default function MaintenanceServices({ quoteNumber, config, pageNumber = 
   const warranties = rawWarranties.map(w => ({
     ...w,
     warranty: w.warranty.replace(/\{\{panel_warranty_years\}\}/g, String(warrantyYears)),
+    alternatives: w.alternatives?.map((alt) => ({
+      warranty: alt.warranty.replace(/\{\{panel_warranty_years\}\}/g, String(warrantyYears)),
+    })),
   }));
+
+  const hasAlternatives = warranties.some(warrantyItemHasAlternatives);
+
+  const isServiceOptional = (s: TemplateService) =>
+    s.coverage === 'optional' || (s.coverage !== 'included' && s.title === 'Panel Cleaning');
 
   return (
     <div className="quotation-page flex flex-col" style={{ background: '#ffffff' }}>
@@ -67,10 +113,10 @@ export default function MaintenanceServices({ quoteNumber, config, pageNumber = 
           <span style={{ fontSize: '28px' }}>🛡️</span>
           <div>
             <p className="font-semibold text-sm" style={{ color: '#ffffff', fontFamily: 'Poppins, sans-serif' }}>
-              Annual Maintenance Contract (AMC) — Included in First Year
+              Annual Maintenance Contract (AMC) — For 5 Years
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.65)' }}>
-              Comprehensive care programme covering all services below. Renewable annually at competitive rates.
+              Comprehensive care programme covering included services below. Optional add-ons available on request.
             </p>
           </div>
         </div>
@@ -86,12 +132,21 @@ export default function MaintenanceServices({ quoteNumber, config, pageNumber = 
               <div className="flex items-center gap-2 mb-2">
                 <span style={{ fontSize: '18px' }}>{s.icon}</span>
                 <p className="text-xs font-semibold" style={{ color: '#161c34' }}>{s.title}</p>
-                <span
-                  className="text-xs px-1.5 py-0.5 rounded-full ml-auto"
-                  style={{ background: '#dcfce7', color: '#16a34a' }}
-                >
-                  ✓
-                </span>
+                {isServiceOptional(s) ? (
+                  <span
+                    className="text-xs px-1.5 py-0.5 rounded-full ml-auto"
+                    style={{ background: '#fef3c7', color: '#b45309' }}
+                  >
+                    Optional
+                  </span>
+                ) : (
+                  <span
+                    className="text-xs px-1.5 py-0.5 rounded-full ml-auto"
+                    style={{ background: '#dcfce7', color: '#16a34a' }}
+                  >
+                    ✓
+                  </span>
+                )}
               </div>
               <p className="text-xs text-gray-500 leading-relaxed">{s.desc}</p>
             </div>
@@ -116,9 +171,15 @@ export default function MaintenanceServices({ quoteNumber, config, pageNumber = 
               <div>Component</div>
               <div>Warranty Coverage</div>
             </div>
-            {warranties.map((w, i) => (
+            {warranties.map((w, i) => {
+              const coverageValues = [
+                w.warranty,
+                ...(w.alternatives?.map((alt) => alt.warranty) ?? []),
+              ];
+
+              return (
               <div
-                key={w.item}
+                key={`${w.item}-${i}`}
                 className="grid px-4 py-2"
                 style={{
                   gridTemplateColumns: '1fr 2fr',
@@ -128,11 +189,21 @@ export default function MaintenanceServices({ quoteNumber, config, pageNumber = 
                 }}
               >
                 <div className="font-medium" style={{ color: '#161c34' }}>{w.item}</div>
-                <div className="text-gray-600">{w.warranty}</div>
+                <div className="text-gray-600">
+                  <WarrantyAlternativesStack values={coverageValues} />
+                </div>
               </div>
-            ))}
+              );
+            })}
           </div>
+          {hasAlternatives && (
+            <p className="text-xs text-gray-400 mt-2 italic">
+              Where OR is shown, alternative warranty coverage is offered for the same component — final terms per selected equipment at order confirmation.
+            </p>
+          )}
         </div>
+
+        <ProposalNoteBlock placement="maintenance_services" proposalNote={proposalNote} />
       </div>
 
       <QuotationFooter quoteNumber={quoteNumber} pageNumber={pageNumber} />

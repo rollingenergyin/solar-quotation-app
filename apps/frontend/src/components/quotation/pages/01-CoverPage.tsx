@@ -7,9 +7,16 @@ interface Props {
   systemSizeKw: number;
   date: string;
   quoteNumber: string;
+  isCombined?: boolean;
+  systemCount?: number;
 }
 
-export default function CoverPage({ clientName, systemSizeKw, date, quoteNumber }: Props) {
+export default function CoverPage({
+  clientName, systemSizeKw, date, quoteNumber, isCombined = false, systemCount,
+}: Props) {
+  const combinedLabel = isCombined
+    ? `${systemSizeKw} kW Combined Rooftop Solar Systems`
+    : `${systemSizeKw} kW Rooftop Solar System`;
   return (
     <div
       className="quotation-page flex flex-col"
@@ -33,7 +40,7 @@ export default function CoverPage({ clientName, systemSizeKw, date, quoteNumber 
 
         {/* Tagline */}
         <p className="text-sm font-medium tracking-[0.25em] uppercase mb-4" style={{ color: '#6690cc' }}>
-          Detailed Solar Proposal
+          {isCombined ? 'Combined Multi-System Solar Proposal' : 'Detailed Solar Proposal'}
         </p>
 
         {/* Main headline */}
@@ -46,8 +53,14 @@ export default function CoverPage({ clientName, systemSizeKw, date, quoteNumber 
             maxWidth: '480px',
           }}
         >
-          {systemSizeKw} kW Rooftop Solar System
+          {combinedLabel}
         </h1>
+
+        {isCombined && systemCount != null && systemCount >= 2 && (
+          <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.65)' }}>
+            {systemCount} combined systems · {systemSizeKw} kW total capacity
+          </p>
+        )}
 
         {/* Client box */}
         <div

@@ -27,6 +27,15 @@ const pdfUpload = multer({
   },
 });
 
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
+
 /** Generate QT-0001, QT-0002 style numbers for new quotations */
 async function generateQTNumber(): Promise<string> {
   const result = await prisma.$queryRaw<{ nextValue: number }[]>`
@@ -213,154 +222,23 @@ router.get('/:id/template-data', templateDataAuth, async (req: Request, res: Res
     if (!quotationId) {
       return res.status(400).json({ error: 'Quotation ID required' });
     }
-    // Fetch quotation and matching template (by systemType + siteType)
+
     const q = await prisma.quotation.findUnique({
       where: { id: quotationId },
-      include: {
-        customer: true,
-        site: true,
-        result: true,
-        materials: {
-          include: { material: { select: { name: true, unit: true, specs: true } } },
-          orderBy: { createdAt: 'asc' },
-        },
-      },
+      select: { id: true, result: true },
     });
     if (!q) return res.status(404).json({ error: 'Quotation not found' });
-    const { selectTemplateForQuotation } = await import('../services/template-selection.service.js');
-    const sysType = (q.systemType ?? 'DCR') as 'DCR' | 'NON_DCR';
-    const sitType = (q.siteType ?? 'RESIDENTIAL') as 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL';
-    const activeTemplate = await selectTemplateForQuotation(sysType, sitType);
     if (!q.result) {
       return res.status(400).json({
         error: 'Quotation not yet calculated. Please run the calculation first.',
       });
     }
 
-    const breakdown  = (q.result.breakdown as Record<string, unknown>) ?? {};
-    const inputs     = (breakdown.inputs      as Record<string, number>) ?? {};
-    const costBreak  = (breakdown.costBreakdown as Record<string, number>) ?? {};
-    const emiData    = (breakdown.emi as Record<string, Record<string, number>>) ?? {};
+    const { getQuotationTemplateData } = await import('../services/quotation-template-data.service.js');
+    const data = await getQuotationTemplateData(quotationId);
+    if (!data) return res.status(404).json({ error: 'Quotation not found' });
 
-    const systemKw   = inputs.systemSizeKw ?? (q.totalWattage ? q.totalWattage / 1000 : 0);
-    const totalWatts = Math.round(systemKw * 1000);
-    const panelWatt  = 575;
-    const numPanels  = Math.ceil(totalWatts / panelWatt);
-
-    const peakSun    = inputs.peakSunHours         ?? 4;
-    const efficiency = inputs.systemEfficiency      ?? 0.8;
-    const inflation  = inputs.gridInflationPct      ?? 3;
-    const tariff     = inputs.electricityRatePerUnit ?? 18;
-
-    const annualGenKwh = Math.round(systemKw * peakSun * ROI_DAYS_PER_YEAR * efficiency);
-    const annualSavYr1 = Math.round(annualGenKwh * tariff);
-
-    let savings30Yr = 0;
-    for (let y = 0; y < 30; y++) {
-      savings30Yr += Math.round(annualSavYr1 * Math.pow(1 + inflation / 100, y));
-    }
-
-    const netCost    = costBreak.netCost       ?? q.totalAmount ?? 0;
-    const baseCost   = costBreak.baseCost      ?? 0;
-    const gstAmount  = costBreak.gstAmount     ?? 0;
-    const grossCost  = costBreak.grossCost     ?? 0;
-    const subsidy    = costBreak.subsidyAmount ?? 0;
-
-    const emi3Yr = emiData.tenure3yr?.emi ?? 0;
-    const emi5Yr = emiData.tenure5yr?.emi ?? 0;
-    const emi7Yr = emiData.tenure7yr?.emi ?? 0;
-    const emi3YrTotalPayable = emiData.tenure3yr?.totalPayable ?? emi3Yr * 36;
-    const emi3YrTotalInterest = emiData.tenure3yr?.totalInterest ?? emi3Yr * 36 - Math.round(grossCost * 0.8);
-    const emi5YrTotalPayable = emiData.tenure5yr?.totalPayable ?? emi5Yr * 60;
-    const emi5YrTotalInterest = emiData.tenure5yr?.totalInterest ?? emi5Yr * 60 - Math.round(grossCost * 0.8);
-    const emi7YrTotalPayable = emiData.tenure7yr?.totalPayable ?? emi7Yr * 84;
-    const emi7YrTotalInterest = emiData.tenure7yr?.totalInterest ?? emi7Yr * 84 - Math.round(grossCost * 0.8);
-
-    const now = new Date();
-    const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const dateStr = `${now.getDate().toString().padStart(2,'0')} ${months[now.getMonth()]} ${now.getFullYear()}`;
-
-    const materials = q.materials.map((qm, i) => ({
-      srNo: i + 1,
-      name: qm.material.name,
-      specification: (qm.material.specs as string | null) ?? '',
-      make: '',
-      quantity: qm.quantity,
-      unit: qm.material.unit,
-    }));
-
-    res.json({
-      quoteNumber: q.quoteNumber,
-      date: dateStr,
-      validUntil: q.validUntil ? q.validUntil.toISOString().split('T')[0] : null,
-      status: q.status,
-
-      clientName: q.customer.name,
-      clientAddress: q.site.address || q.customer.address || '',
-      clientPhone: q.customer.phone ?? null,
-      clientEmail: q.customer.email ?? null,
-      contactPerson: q.customer.name,
-
-      systemSizeKw: systemKw,
-      systemSizeWatts: totalWatts,
-      numModules: numPanels,
-      inverterSizeKw: q.inverterSizeKw ?? systemKw,  // Default to system size if not set
-      areaSquareFt: Math.round(systemKw * 80),  // 80 sq.ft per kW
-
-      dailyProductionKwh: Math.round((annualGenKwh / ROI_DAYS_PER_YEAR) * 10) / 10,
-      monthlyProductionKwh: Math.round(annualGenKwh / 12),
-      annualProductionKwh: annualGenKwh,
-
-      monthlySavingsRs: Math.round(annualSavYr1 / 12),
-      annualSavingsRs: annualSavYr1,
-      savings30YrRs: savings30Yr,
-
-      breakevenYears: q.result.roiYears
-        ? Math.round(q.result.roiYears * 10) / 10
-        : 0,
-      tariffPerUnit: tariff,
-      gridInflationPct: inflation,
-
-      baseCost,
-      gstAmount,
-      totalCost: grossCost,
-      subsidyAmount: subsidy,
-      netCost,
-
-      emi3Yr,
-      emi5Yr,
-      emi7Yr,
-      emi3YrTotalPayable,
-      emi3YrTotalInterest,
-      emi5YrTotalPayable,
-      emi5YrTotalInterest,
-      emi7YrTotalPayable,
-      emi7YrTotalInterest,
-
-      materials,
-
-      // System/site type from quotation
-      systemType: q.systemType,
-      siteType:   q.siteType,
-      showSubsidy:      q.systemType !== 'NON_DCR' && (q.siteType === 'RESIDENTIAL' || q.siteType === 'SOCIETY'),
-      showDepreciation: q.systemType === 'NON_DCR' && (q.siteType === 'COMMERCIAL' || q.siteType === 'INDUSTRIAL'),
-
-      // Sanctioned load
-      sanctionedLoadKw: q.sanctionedLoadKw ?? null,
-      sanctionedLoadIncreasedToKw: q.sanctionedLoadIncreasedToKw ?? null,
-
-      // Depreciation data from active template
-      depreciationTable: activeTemplate?.depreciationTable ?? [
-        { year: 'Year 1', rate: '40%',  note: 'WDV accelerated depreciation' },
-        { year: 'Year 2', rate: '24%',  note: '40% on remaining 60%' },
-        { year: 'Year 3', rate: '14.4%',note: '40% on remaining 36%' },
-        { year: 'Year 4+',rate: '8.6%', note: 'Diminishing balance' },
-      ],
-      depreciationNote: activeTemplate?.depreciationNote ?? 'This solar installation may qualify for accelerated depreciation benefits under applicable tax rules.',
-
-      // Embed full template config so the frontend always uses the latest active version
-      templateConfig: activeTemplate ?? null,
-    });
+    res.json(data);
   } catch (err) { next(err); }
 });
 
@@ -391,8 +269,8 @@ async function generateAndSaveLegacyPdf(
   const emiDataPdf = breakdown.emi as Record<string, { emi?: number }> | undefined;
   const loanRate = inputs.emiRatePct ?? 9;
   const a1 = emiDataPdf?.tenure3yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 36);
-  const a2 = emiDataPdf?.tenure5yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 60);
-  const a3 = emiDataPdf?.tenure7yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 84);
+  const a2 = emiDataPdf?.tenure5yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 48);
+  const a3 = emiDataPdf?.tenure7yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 60);
   const fmtInr = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
   const now = new Date();
   const dateStr = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
@@ -465,9 +343,8 @@ router.post(
     body('address').trim().notEmpty().withMessage('address required'),
     body('systemType').isIn(['DCR', 'NON_DCR']).withMessage('systemType must be DCR or NON_DCR'),
     body('siteType').isIn(['RESIDENTIAL', 'SOCIETY', 'COMMERCIAL', 'INDUSTRIAL']).withMessage('invalid siteType'),
-    body('systemSizeKw').isFloat({ min: 0.5 }).withMessage('systemSizeKw required (minimum 0.5 kW)'),
-    body('pricePerWatt').isFloat({ min: 1 }).withMessage('pricePerWatt required (₹ per W)'),
     body('electricityRatePerUnit').isFloat({ min: 1 }).withMessage('electricityRatePerUnit required (₹/kWh)'),
+    body('quotationMode').optional().isIn(['SINGLE', 'COMBINED']),
   ],
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -477,17 +354,178 @@ router.post(
       const {
         customerName, address, city, phone, email,
         systemType = 'DCR', siteType = 'RESIDENTIAL',
-        systemSizeKw,
+        quotationMode = 'SINGLE',
+        combinedSingleCosting: combinedSingleCostingBody = false,
+        systems: systemsBody,
+        systemSizeKw: systemSizeKwBody,
         inverterSizeKw,
-        pricePerWatt,
+        pricePerWatt: pricePerWattBody,
         electricityRatePerUnit,
         peakSunHours = 4,
         gstPct = 8.9,
         emiRatePct = 9,
         sanctionedLoadKw,
         sanctionedLoadIncreasedToKw,
+        buildingHeight,
+        buildingHeightCustomFloors,
+        meterPhase,
+        panelWattage,
+        panelWattageCustom,
+        structureCategory,
+        structureOption,
+        panelWarrantyYears,
+        warrantyItems,
+        bomItems,
+        paymentMilestones,
+        paymentModes,
+        paymentTermsBullets,
+        proposalNote,
+        siteCosting,
+        sitePhotos,
+        profitMarginPct: profitMarginPctBody,
         notes,
+        costingOptions: costingOptionsBody,
       } = req.body;
+
+      const { calculateCombinedSystems } = await import('../services/combined-quotation.service.js');
+      const { calculateCostingOptions } = await import('../services/costing-options.service.js');
+
+      let resolvedSystemType = systemType as 'DCR' | 'NON_DCR';
+      let resolvedSiteType = siteType as 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL';
+
+      let systemSizeKw = systemSizeKwBody;
+      let pricePerWatt = pricePerWattBody;
+      let combinedSystemsCalc: Awaited<ReturnType<typeof calculateCombinedSystems>> | null = null;
+
+      if (quotationMode === 'COMBINED') {
+        const singleCosting = Boolean(combinedSingleCostingBody);
+        if (!Array.isArray(systemsBody) || systemsBody.length < 2) {
+          return res.status(400).json({ error: 'Combined quotation requires at least 2 systems' });
+        }
+        if (systemsBody.length > 6) {
+          return res.status(400).json({ error: 'Combined quotation supports at most 6 systems' });
+        }
+        const combinedPpw = parseFloat(String(pricePerWattBody));
+        if (singleCosting && (!Number.isFinite(combinedPpw) || combinedPpw < 1)) {
+          return res.status(400).json({ error: 'Combined single costing requires pricePerWatt (₹ per W)' });
+        }
+        const parsedSystems: {
+          label: string;
+          consumerNumber: string;
+          systemSizeKw: number;
+          pricePerWatt: number;
+          siteType?: string;
+          meterPhase?: string;
+          structureCategory?: string;
+          structureOption?: string;
+          sanctionedLoadKw?: number | null;
+          sanctionedLoadIncreasedToKw?: number | null;
+        }[] = [];
+        for (let i = 0; i < systemsBody.length; i++) {
+          const s = systemsBody[i] as Record<string, unknown>;
+          const kw = parseFloat(String(s.systemSizeKw));
+          const ppw = singleCosting
+            ? combinedPpw
+            : parseFloat(String(s.pricePerWatt));
+          if (!Number.isFinite(kw) || kw < 0.5) {
+            return res.status(400).json({ error: `System ${i + 1}: invalid capacity (min 0.5 kW)` });
+          }
+          if (!singleCosting && (!Number.isFinite(ppw) || ppw < 1)) {
+            return res.status(400).json({ error: `System ${i + 1}: invalid price per watt` });
+          }
+          const sysSite = s.siteType ? String(s.siteType) : siteType;
+          if (!['RESIDENTIAL', 'COMMERCIAL'].includes(sysSite)) {
+            return res.status(400).json({ error: `System ${i + 1}: connection type must be Residential or Commercial` });
+          }
+          const parseSanctionedLoad = (v: unknown): number | null => {
+            if (v === undefined || v === null || String(v).trim() === '') return null;
+            const n = parseFloat(String(v));
+            return Number.isFinite(n) && n >= 0 ? n : null;
+          };
+          const sysSanctionedLoad = parseSanctionedLoad(s.sanctionedLoadKw);
+          const sysSanctionedIncreased =
+            parseSanctionedLoad(s.sanctionedLoadIncreasedToKw) ?? (kw > 0 ? kw : null);
+
+          parsedSystems.push({
+            label: String(s.label ?? `System ${i + 1}`),
+            consumerNumber: s.consumerNumber ? String(s.consumerNumber) : '',
+            systemSizeKw: kw,
+            pricePerWatt: ppw,
+            siteType: sysSite,
+            meterPhase: s.meterPhase ? String(s.meterPhase) : 'SINGLE',
+            structureCategory: s.structureCategory ? String(s.structureCategory) : 'STANDARD',
+            structureOption: s.structureOption ? String(s.structureOption) : '1ft',
+            sanctionedLoadKw: sysSanctionedLoad,
+            sanctionedLoadIncreasedToKw: sysSanctionedIncreased,
+          });
+        }
+        combinedSystemsCalc = calculateCombinedSystems(parsedSystems, {
+          systemType,
+          siteType,
+          electricityRatePerUnit: parseFloat(electricityRatePerUnit),
+          peakSunHours: parseFloat(peakSunHours),
+          singleCosting,
+          combinedPricePerWatt: singleCosting ? combinedPpw : undefined,
+        });
+        systemSizeKw = combinedSystemsCalc.combined.systemSizeKw;
+        pricePerWatt = combinedSystemsCalc.combined.blendedPricePerWatt;
+      } else {
+        const kw = parseFloat(systemSizeKwBody);
+        const ppw = parseFloat(pricePerWattBody);
+        if (!Number.isFinite(kw) || kw < 0.5) {
+          return res.status(400).json({ error: 'systemSizeKw required (minimum 0.5 kW)' });
+        }
+        if (!Number.isFinite(ppw) || ppw < 1) {
+          return res.status(400).json({ error: 'pricePerWatt required (₹ per W)' });
+        }
+        systemSizeKw = kw;
+        pricePerWatt = ppw;
+      }
+
+      let costingOptionsCalc: Awaited<ReturnType<typeof calculateCostingOptions>> | null = null;
+      if (Array.isArray(costingOptionsBody) && costingOptionsBody.length > 0) {
+        if (costingOptionsBody.length > 4) {
+          return res.status(400).json({ error: 'Maximum 4 costing options allowed' });
+        }
+        const parsedCostingInputs: {
+          title: string;
+          systemType: 'DCR' | 'NON_DCR';
+          siteType: 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL';
+          pricePerWatt: number;
+        }[] = [];
+        for (let i = 0; i < costingOptionsBody.length; i++) {
+          const o = costingOptionsBody[i] as Record<string, unknown>;
+          const title = String(o.title ?? '').trim();
+          const ppw = parseFloat(String(o.pricePerWatt));
+          const optSystemType = String(o.systemType ?? resolvedSystemType);
+          const optSiteType = String(o.siteType ?? resolvedSiteType);
+          if (!title && costingOptionsBody.length > 1) {
+            return res.status(400).json({ error: `Costing option ${i + 1}: title is required` });
+          }
+          if (!Number.isFinite(ppw) || ppw < 1) {
+            return res.status(400).json({ error: `Costing option ${i + 1}: invalid price per watt` });
+          }
+          if (!['DCR', 'NON_DCR'].includes(optSystemType)) {
+            return res.status(400).json({ error: `Costing option ${i + 1}: invalid system type` });
+          }
+          if (!['RESIDENTIAL', 'SOCIETY', 'COMMERCIAL', 'INDUSTRIAL'].includes(optSiteType)) {
+            return res.status(400).json({ error: `Costing option ${i + 1}: invalid site type` });
+          }
+          parsedCostingInputs.push({
+            title,
+            systemType: optSystemType as 'DCR' | 'NON_DCR',
+            siteType: optSiteType as 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL',
+            pricePerWatt: ppw,
+          });
+        }
+        costingOptionsCalc = calculateCostingOptions(parsedCostingInputs, parseFloat(String(systemSizeKw)));
+        if (!costingOptionsCalc.length) {
+          return res.status(400).json({ error: 'Could not calculate costing options' });
+        }
+        resolvedSystemType = costingOptionsCalc[0].systemType;
+        resolvedSiteType = costingOptionsCalc[0].siteType;
+        pricePerWatt = costingOptionsCalc[0].pricePerWatt;
+      }
 
       const userId = req.user!.userId;
 
@@ -520,16 +558,23 @@ router.post(
             createdById: userId,
             status: 'DRAFT',
             quotationType: 'QUICK',
-            systemType,
-            siteType,
-            sanctionedLoadKw: sanctionedLoadKw ? parseFloat(sanctionedLoadKw) : null,
+            systemType: resolvedSystemType,
+            siteType: resolvedSiteType,
+            sanctionedLoadKw:
+              quotationMode === 'COMBINED'
+                ? null
+                : sanctionedLoadKw
+                  ? parseFloat(sanctionedLoadKw)
+                  : null,
             sanctionedLoadIncreasedToKw:
-              sanctionedLoadIncreasedToKw !== undefined &&
-              sanctionedLoadIncreasedToKw !== null &&
-              String(sanctionedLoadIncreasedToKw).trim() !== '' &&
-              Number.isFinite(parseFloat(String(sanctionedLoadIncreasedToKw)))
-                ? parseFloat(String(sanctionedLoadIncreasedToKw))
-                : null,
+              quotationMode === 'COMBINED'
+                ? null
+                : sanctionedLoadIncreasedToKw !== undefined &&
+                    sanctionedLoadIncreasedToKw !== null &&
+                    String(sanctionedLoadIncreasedToKw).trim() !== '' &&
+                    Number.isFinite(parseFloat(String(sanctionedLoadIncreasedToKw)))
+                  ? parseFloat(String(sanctionedLoadIncreasedToKw))
+                  : null,
             inverterSizeKw: (inverterSizeKw != null && parseFloat(inverterSizeKw) > 0)
               ? parseFloat(inverterSizeKw) : parseFloat(systemSizeKw),
           },
@@ -537,17 +582,22 @@ router.post(
         return { customer, site, quotation };
       });
 
+      const profitMarginPct =
+        profitMarginPctBody != null && Number.isFinite(parseFloat(String(profitMarginPctBody)))
+          ? parseFloat(String(profitMarginPctBody))
+          : 0;
+
       await calculateQuotation(quotation.id, {
         systemSizeKw:           parseFloat(systemSizeKw),
         pricePerWatt:           parseFloat(pricePerWatt),
-        profitMarginPct:        0,
+        profitMarginPct,
         gstPct:                 parseFloat(gstPct),
         electricityRatePerUnit: parseFloat(electricityRatePerUnit),
         peakSunHours:           parseFloat(peakSunHours),
         systemEfficiency:       1,
         emiRatePct:             parseFloat(emiRatePct),
-        systemType,
-        siteType,
+        systemType:           resolvedSystemType,
+        siteType:             resolvedSiteType,
         notes: notes?.trim(),
       }, userId);
 
@@ -557,23 +607,81 @@ router.post(
         include: { result: true },
       });
       if (qWithResult?.result) {
+        const { buildQuickQuoteDisplayConfig } = await import('../services/quick-quote-config.service.js');
+        const { parseBomItemsFromBody, serializeBomItemsForStorage } = await import('../services/bom-items.service.js');
+        const { parseWarrantyItemsFromBody, serializeWarrantyItemsForStorage } = await import('../services/warranty-items.service.js');
         const br = (qWithResult.result.breakdown as Record<string, unknown>) ?? {};
         const inputs = (br.inputs as Record<string, unknown>) ?? {};
         const cb = (br.costBreakdown as Record<string, unknown>) ?? {};
+        const sysKw = parseFloat(systemSizeKw);
+        const quickConfig = {
+          buildingHeight: buildingHeight ?? 'G',
+          buildingHeightCustomFloors:
+            buildingHeightCustomFloors != null && Number.isFinite(parseFloat(String(buildingHeightCustomFloors)))
+              ? parseFloat(String(buildingHeightCustomFloors))
+              : null,
+          meterPhase: meterPhase ?? 'SINGLE',
+          panelWattage: panelWattage ?? 'DEFAULT',
+          panelWattageCustom:
+            panelWattageCustom != null && Number.isFinite(parseFloat(String(panelWattageCustom)))
+              ? parseFloat(String(panelWattageCustom))
+              : null,
+          structureCategory: structureCategory ?? 'STANDARD',
+          structureOption: structureOption ?? '1ft',
+        };
+        const parsedWarrantyItems = parseWarrantyItemsFromBody(warrantyItems);
+        const warrantyItemsStored = parsedWarrantyItems?.length
+          ? serializeWarrantyItemsForStorage(parsedWarrantyItems)
+          : undefined;
+        const warrantyOverrides =
+          warrantyItemsStored?.length || panelWarrantyYears
+            ? {
+                panelWarrantyYears: panelWarrantyYears ? parseInt(String(panelWarrantyYears), 10) : 25,
+                ...(warrantyItemsStored?.length ? { warrantyItems: warrantyItemsStored } : {}),
+              }
+            : undefined;
+        const parsedBomItems = parseBomItemsFromBody(bomItems);
+        const bomItemsStored = parsedBomItems?.length
+          ? serializeBomItemsForStorage(parsedBomItems)
+          : undefined;
+        const templateOverrides =
+          (() => {
+            const hasBom = Boolean(bomItemsStored?.length);
+            const hasPayment =
+              (Array.isArray(paymentMilestones) && paymentMilestones.length > 0) ||
+              (Array.isArray(paymentModes) && paymentModes.length > 0) ||
+              (Array.isArray(paymentTermsBullets) && paymentTermsBullets.length > 0);
+            if (!hasBom && !hasPayment) return undefined;
+            return {
+              ...(bomItemsStored?.length ? { bomItems: bomItemsStored } : {}),
+              ...(Array.isArray(paymentMilestones) && paymentMilestones.length > 0
+                ? { paymentMilestones } : {}),
+              ...(Array.isArray(paymentModes) && paymentModes.length > 0 ? { paymentModes } : {}),
+              ...(Array.isArray(paymentTermsBullets) && paymentTermsBullets.length > 0
+                ? { paymentTermsBullets } : {}),
+            };
+          })();
         await prisma.quotation.update({
           where: { id: quotation.id },
           data: {
             quotationDataJson: JSON.parse(JSON.stringify({
               inputs,
               costBreakdown: cb,
+              quotationMode,
+              combinedSingleCosting: quotationMode === 'COMBINED' ? Boolean(combinedSingleCostingBody) : undefined,
+              combinedSystems: combinedSystemsCalc?.systems,
+              combinedSummary: combinedSystemsCalc?.combined,
+              costingOptions: costingOptionsCalc ?? undefined,
               formData: {
                 pricePerWatt,
                 electricityRatePerUnit: parseFloat(electricityRatePerUnit),
-                systemSizeKw: parseFloat(systemSizeKw),
+                systemSizeKw: sysKw,
                 inverterSizeKw: (inverterSizeKw != null && parseFloat(inverterSizeKw) > 0)
-                  ? parseFloat(inverterSizeKw) : parseFloat(systemSizeKw),
-                systemType,
-                siteType,
+                  ? parseFloat(inverterSizeKw) : sysKw,
+                systemType: resolvedSystemType,
+                siteType: resolvedSiteType,
+                quotationMode,
+                combinedSingleCosting: quotationMode === 'COMBINED' ? Boolean(combinedSingleCostingBody) : undefined,
                 sanctionedLoadKw: sanctionedLoadKw ? parseFloat(sanctionedLoadKw) : null,
                 sanctionedLoadIncreasedToKw:
                   sanctionedLoadIncreasedToKw !== undefined &&
@@ -582,7 +690,25 @@ router.post(
                   Number.isFinite(parseFloat(String(sanctionedLoadIncreasedToKw)))
                     ? parseFloat(String(sanctionedLoadIncreasedToKw))
                     : null,
+                ...quickConfig,
               },
+              systemConfig: buildQuickQuoteDisplayConfig(sysKw, quickConfig),
+              warrantyOverrides,
+              templateOverrides,
+              proposalNote:
+                proposalNote &&
+                typeof proposalNote === 'object' &&
+                typeof proposalNote.text === 'string' &&
+                proposalNote.text.trim() &&
+                typeof proposalNote.placement === 'string' &&
+                proposalNote.placement.trim()
+                  ? {
+                      text: proposalNote.text.trim(),
+                      placement: proposalNote.placement.trim(),
+                    }
+                  : undefined,
+              siteCosting: siteCosting && typeof siteCosting === 'object' ? siteCosting : undefined,
+              sitePhotos: Array.isArray(sitePhotos) ? sitePhotos : undefined,
             })) as object,
           },
         });
@@ -686,7 +812,6 @@ router.post(
       if (req.body.inverterSizeKw !== undefined) {
         updateData.inverterSizeKw = parseFloat(req.body.inverterSizeKw) || null;
       } else if (req.body.systemSizeKw !== undefined) {
-        // Default: inverter = system size only when inverter was never set (user has not manually edited)
         const q = await prisma.quotation.findUnique({
           where: { id: req.params.id },
           select: { inverterSizeKw: true },
@@ -913,8 +1038,8 @@ router.get('/:id/pdf', authenticate, async (req: Request, res: Response, next: N
       const emiDataPdf = breakdown.emi as Record<string, { emi?: number }> | undefined;
       const loanRate = inputs.emiRatePct ?? 9;
       const a1 = emiDataPdf?.tenure3yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 36);
-      const a2 = emiDataPdf?.tenure5yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 60);
-      const a3 = emiDataPdf?.tenure7yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 84);
+      const a2 = emiDataPdf?.tenure5yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 48);
+      const a3 = emiDataPdf?.tenure7yr?.emi ?? calcLoanEmi(grossCost, 0.8, loanRate, 60);
 
       const fmtInr = (n: number) =>
         n.toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -1071,10 +1196,12 @@ router.post('/:id/create-version', authenticate, [
     const { calculateQuotation } = await import('../services/quotation.service.js');
     const result = await calculateQuotation(newQuotation.id, calcInput, userId);
 
+    const parentJson = (parent.quotationDataJson as Record<string, unknown> | null) ?? {};
     await prisma.quotation.update({
       where: { id: newQuotation.id },
       data: {
         quotationDataJson: {
+          ...parentJson,
           inputs: result.inputs,
           costBreakdown: {
             baseCost: result.baseCost,
@@ -1085,7 +1212,7 @@ router.post('/:id/create-version', authenticate, [
             subsidyAmount: result.subsidyAmount,
             netCost: result.netCost,
           },
-          formData,
+          formData: { ...(parentJson.formData as object | undefined), ...formData },
         } as object,
       },
     });
@@ -1102,9 +1229,9 @@ router.post('/:id/create-version', authenticate, [
   }
 });
 
-/** Update quotation status */
+/** Update quotation status (Draft → Review → Sent → Accepted/Rejected) */
 router.patch('/:id/status', authenticate, [
-  body('status').isIn(['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED']),
+  body('status').isIn(['DRAFT', 'REVIEW', 'SENT', 'ACCEPTED', 'REJECTED']),
 ], async (req: Request, res: Response, next: NextFunction) => {
   try {
     const errors = validationResult(req);
@@ -1114,6 +1241,169 @@ router.patch('/:id/status', authenticate, [
       data: { status: req.body.status },
     });
     res.json(q);
+  } catch (err) { next(err); }
+});
+
+/** Lock or unlock quotation pricing */
+router.patch('/:id/pricing-lock', authenticate, [
+  body('locked').isBoolean(),
+], async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const q = await prisma.$executeRaw`
+      UPDATE "quotations" SET "isPricingLocked" = ${Boolean(req.body.locked)}
+      WHERE "id" = ${req.params.id}
+    `;
+    if (!q) return res.status(404).json({ error: 'Quotation not found' });
+    const updated = await prisma.quotation.findUnique({ where: { id: req.params.id } });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+/** Duplicate quotation (full snapshot, new quote number, DRAFT) */
+router.post('/:id/duplicate', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id!;
+    const parent = await prisma.quotation.findUnique({
+      where: { id },
+      include: { result: true },
+    });
+    if (!parent) return res.status(404).json({ error: 'Quotation not found' });
+
+    const quoteNum = await generateQTNumber();
+    const userId = req.user!.userId;
+
+    const dup = await prisma.quotation.create({
+      data: {
+        customerId: parent.customerId,
+        siteId: parent.siteId,
+        quoteNumber: quoteNum,
+        version: 1,
+        parentQuotationId: null,
+        quotationType: parent.quotationType,
+        systemType: parent.systemType,
+        siteType: parent.siteType,
+        sanctionedLoadKw: parent.sanctionedLoadKw,
+        sanctionedLoadIncreasedToKw: parent.sanctionedLoadIncreasedToKw,
+        inverterSizeKw: parent.inverterSizeKw,
+        totalWattage: parent.totalWattage,
+        totalAmount: parent.totalAmount,
+        notes: parent.notes,
+        status: 'DRAFT',
+        quotationDataJson: parent.quotationDataJson ?? undefined,
+        createdById: userId,
+      },
+    });
+
+    if (parent.result) {
+      const { calculateQuotation } = await import('../services/quotation.service.js');
+      const json = (parent.quotationDataJson as Record<string, unknown> | null) ?? {};
+      const inputs = (json.inputs as Record<string, unknown>) ?? {};
+      await calculateQuotation(dup.id, {
+        systemSizeKw: Number(inputs.systemSizeKw) || (parent.totalWattage ? parent.totalWattage / 1000 : 3),
+        pricePerWatt: Number(inputs.pricePerWatt) || 55,
+        profitMarginPct: Number(inputs.profitMarginPct) || 0,
+        gstPct: Number(inputs.gstPct) || 8.9,
+        electricityRatePerUnit: Number(inputs.electricityRatePerUnit) || 18,
+        peakSunHours: Number(inputs.peakSunHours) || 4,
+        systemType: parent.systemType,
+        siteType: parent.siteType,
+      }, userId);
+    }
+
+    res.status(201).json({ id: dup.id, quoteNumber: dup.quoteNumber });
+  } catch (err) { next(err); }
+});
+
+/** Update site costing on saved quotation + optional price sync */
+router.put('/:id/site-costing', authenticate, [
+  body('siteCosting').isObject(),
+], async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const id = req.params.id!;
+    const existing = await prisma.quotation.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Quotation not found' });
+
+    const lockedRows = await prisma.$queryRaw<Array<{ isPricingLocked: boolean }>>`
+      SELECT COALESCE("isPricingLocked", false) AS "isPricingLocked" FROM "quotations" WHERE "id" = ${id}
+    `;
+    if (lockedRows[0]?.isPricingLocked) {
+      return res.status(403).json({ error: 'Pricing is locked on this quotation' });
+    }
+
+    const json = (existing.quotationDataJson as Record<string, unknown> | null) ?? {};
+    const siteCosting = req.body.siteCosting as Record<string, unknown>;
+    const nextJson = { ...json, siteCosting };
+
+    const ppw = siteCosting.pricePerWatt;
+    if (ppw != null && Number.isFinite(Number(ppw)) && existing.result) {
+      const inputs = (json.inputs as Record<string, unknown>) ?? {};
+      const { calculateQuotation } = await import('../services/quotation.service.js');
+      await calculateQuotation(id, {
+        systemSizeKw: Number(inputs.systemSizeKw) || Number(siteCosting.systemSizeKw) || 3,
+        pricePerWatt: Number(ppw),
+        profitMarginPct: Number(inputs.profitMarginPct) || Number(siteCosting.profitMarginPct) || 0,
+        gstPct: Number(inputs.gstPct) || 8.9,
+        electricityRatePerUnit: Number(inputs.electricityRatePerUnit) || 18,
+        peakSunHours: Number(inputs.peakSunHours) || 4,
+        systemType: existing.systemType,
+        siteType: existing.siteType,
+      }, req.user!.userId);
+    }
+
+    const updated = await prisma.quotation.update({
+      where: { id },
+      data: { quotationDataJson: nextJson as object },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+/** Upload site survey photo */
+router.post(
+  '/:id/site-photos',
+  authenticate,
+  photoUpload.single('photo'),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const id = req.params.id!;
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'photo file required' });
+
+      const q = await prisma.quotation.findUnique({ where: { id } });
+      if (!q) return res.status(404).json({ error: 'Quotation not found' });
+
+      const dir = join(UPLOADS_DIR, id);
+      if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+      const filename = `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const filepath = join(dir, filename);
+      await writeFile(filepath, file.buffer);
+
+      const url = `/api/quotations/${id}/site-photos/${filename}`;
+      const json = (q.quotationDataJson as Record<string, unknown> | null) ?? {};
+      const photos = Array.isArray(json.sitePhotos) ? [...json.sitePhotos] : [];
+      photos.push({ name: file.originalname, url, filename });
+
+      await prisma.quotation.update({
+        where: { id },
+        data: { quotationDataJson: { ...json, sitePhotos: photos } as object },
+      });
+
+      res.json({ name: file.originalname, url });
+    } catch (err) { next(err); }
+  },
+);
+
+router.get('/:id/site-photos/:filename', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const filepath = join(UPLOADS_DIR, req.params.id!, req.params.filename!);
+    const buf = await readFile(filepath);
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.send(buf);
   } catch (err) { next(err); }
 });
 
