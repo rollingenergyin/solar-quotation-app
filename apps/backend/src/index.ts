@@ -44,56 +44,66 @@ app.use((_req, res) => {
 
 app.use(errorHandler);
 
-app.listen(config.port, async () => {
-  console.log(`Backend running on http://localhost:${config.port}`);
-
+async function startServer() {
+  // Schema must be verified before accepting traffic — Prisma selects all
+  // model columns, so a missing production column fails every template query.
   try {
     const { runStartupSchemaFix } = await import('./services/startup-schema-fix.service.js');
     await runStartupSchemaFix();
     console.log('[DB] Schema verified.');
   } catch (err) {
-    console.error('[DB] Schema fix warning (non-fatal):', err);
+    console.error('[DB] Schema fix failed:', err);
+    throw err;
   }
 
-  try {
-    const { ensureDefaultTemplates } = await import('./services/default-templates.service.js');
-    await ensureDefaultTemplates();
-  } catch (err) {
-    console.error('[Default Templates] Failed to ensure default templates:', err);
-  }
+  app.listen(config.port, async () => {
+    console.log(`Backend running on http://localhost:${config.port}`);
 
-  try {
-    const { ensureProcessTimelineSettings } = await import('./services/process-timeline.service.js');
-    const { PrismaClient } = await import('@prisma/client');
-    const bootPrisma = new PrismaClient();
-    await ensureProcessTimelineSettings(bootPrisma);
-    await bootPrisma.$disconnect();
-  } catch (err) {
-    console.error('[Process Timeline] Failed to ensure global settings:', err);
-  }
-
-  // Solar Growth OS — start automation engine + event bus worker
-  try {
-    const { startAutomationEngine } = await import('./services/crm/automation-engine.service.js');
-    startAutomationEngine();
-  } catch (err) {
-    console.error('[Automation] Failed to start:', err);
-  }
-
-  try {
-    const { startEventWorker } = await import('./services/crm/event-bus.service.js');
-    await startEventWorker();
-  } catch (err) {
-    console.error('[EventBus] Worker start warning (non-fatal):', err);
-  }
-
-  // Drip campaign tick — every 60 seconds
-  setInterval(async () => {
     try {
-      const { processDripTick } = await import('./services/crm/campaign-engine.service.js');
-      await processDripTick();
+      const { ensureDefaultTemplates } = await import('./services/default-templates.service.js');
+      await ensureDefaultTemplates();
     } catch (err) {
-      console.error('[DripTick] Error:', err);
+      console.error('[Default Templates] Failed to ensure default templates:', err);
     }
-  }, 60_000);
+
+    try {
+      const { ensureProcessTimelineSettings } = await import('./services/process-timeline.service.js');
+      const { PrismaClient } = await import('@prisma/client');
+      const bootPrisma = new PrismaClient();
+      await ensureProcessTimelineSettings(bootPrisma);
+      await bootPrisma.$disconnect();
+    } catch (err) {
+      console.error('[Process Timeline] Failed to ensure global settings:', err);
+    }
+
+    // Solar Growth OS — start automation engine + event bus worker
+    try {
+      const { startAutomationEngine } = await import('./services/crm/automation-engine.service.js');
+      startAutomationEngine();
+    } catch (err) {
+      console.error('[Automation] Failed to start:', err);
+    }
+
+    try {
+      const { startEventWorker } = await import('./services/crm/event-bus.service.js');
+      await startEventWorker();
+    } catch (err) {
+      console.error('[EventBus] Worker start warning (non-fatal):', err);
+    }
+
+    // Drip campaign tick — every 60 seconds
+    setInterval(async () => {
+      try {
+        const { processDripTick } = await import('./services/crm/campaign-engine.service.js');
+        await processDripTick();
+      } catch (err) {
+        console.error('[DripTick] Error:', err);
+      }
+    }, 60_000);
+  });
+}
+
+startServer().catch((err) => {
+  console.error('[Boot] Fatal startup error:', err);
+  process.exit(1);
 });

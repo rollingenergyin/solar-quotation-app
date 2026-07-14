@@ -96,6 +96,18 @@ npm run dev
 | `npm run db:seed` | Seed database with test users |
 | `npm run db:studio` | Open Prisma Studio (in backend) |
 
+## Production / Render deployment
+
+Backend start command (`apps/backend`): `npm run start:prod`
+
+That script:
+
+1. Runs `prisma migrate deploy` (preferred, versioned migrations).
+2. If migrate history has drifted, still applies critical idempotent SQL for `quotation_templates.bankDetails`, `quotation_templates.bomOptions`, and `quotation_global_settings`.
+3. Starts the API. On boot, `runStartupSchemaFix()` runs **before** the server listens so Prisma column selects cannot race a missing column.
+
+Do **not** use `prisma db push` on production. Prefer migrations; the startup schema fix is a safety net for known migration-history drift only.
+
 ## Auth & Roles
 
 - **ADMIN**: Full access; can register new users (admin or sales).

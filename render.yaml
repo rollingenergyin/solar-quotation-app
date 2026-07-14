@@ -14,7 +14,10 @@ services:
     rootDir: apps/backend
 
     buildCommand: npm install && npm run build
-    startCommand: npx prisma migrate deploy && npm start
+    # Prefer migrate deploy; if _prisma_migrations history has drifted, prodStart still
+    # applies critical idempotent SQL (bankDetails/bomOptions/global settings) then boots.
+    # Startup schema fix also runs before the server accepts traffic.
+    startCommand: npm run start:prod
 
     envVars:
       - key: NODE_VERSION

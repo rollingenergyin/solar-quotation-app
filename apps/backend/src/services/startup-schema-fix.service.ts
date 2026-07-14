@@ -55,8 +55,28 @@ export async function runStartupSchemaFix() {
     END $$;
   `);
 
+  // ── Quotation template columns (added after initial template schema) ──────
+  // bankDetails / bomOptions migrations exist, but production may not apply
+  // them when _prisma_migrations history has drifted. Keep these idempotent.
+  await exec(`
+    ALTER TABLE "quotation_templates"
+      ADD COLUMN IF NOT EXISTS "bankDetails" JSONB,
+      ADD COLUMN IF NOT EXISTS "bomOptions" JSONB;
+  `);
+
+  // ── Quotation global settings (process timeline singleton) ───────────────
+  await exec(`
+    CREATE TABLE IF NOT EXISTS "quotation_global_settings" (
+      "id" TEXT NOT NULL DEFAULT 'default',
+      "processTimelineRanges" JSONB NOT NULL DEFAULT '[]',
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "quotation_global_settings_pkey" PRIMARY KEY ("id")
+    );
+  `);
+
   await exec(`
     ALTER TABLE "quotation_global_settings"
+      ADD COLUMN IF NOT EXISTS "processTimelineRanges" JSONB NOT NULL DEFAULT '[]',
       ADD COLUMN IF NOT EXISTS "defaultProfitMarginPct" DOUBLE PRECISION NOT NULL DEFAULT 15,
       ADD COLUMN IF NOT EXISTS "siteCostingRates" JSONB NOT NULL DEFAULT '{}';
   `);
@@ -67,15 +87,6 @@ export async function runStartupSchemaFix() {
       "nextValue" INTEGER NOT NULL DEFAULT 1,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT NOW(),
       CONSTRAINT "quotation_sequence_pkey" PRIMARY KEY ("id")
-    );
-  `);
-
-  await exec(`
-    CREATE TABLE IF NOT EXISTS "quotation_global_settings" (
-      "id" TEXT NOT NULL DEFAULT 'default',
-      "processTimelineRanges" JSONB NOT NULL DEFAULT '[]',
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      CONSTRAINT "quotation_global_settings_pkey" PRIMARY KEY ("id")
     );
   `);
 
