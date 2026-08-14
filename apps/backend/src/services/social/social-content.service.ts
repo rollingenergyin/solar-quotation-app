@@ -183,7 +183,7 @@ function fallbackContent(
   const fallbacks: Record<SocialSegment, GeneratedContent> = {
     RESIDENTIAL: {
       title: 'Cut Your Electricity Bill by 90%',
-      captionEn: `⚡ Electricity bill above ₹3,000/month?\n\nGo solar and pay ₹0 for the next 25 years!\n\nPM Surya Ghar subsidy available up to ₹78,000 — limited slots.\n\n📞 Call us today for a FREE site assessment!\n\n👉 rollingenergy.in`,
+      captionEn: `⚡ Electricity bill above ₹3,000/month?\n\nGo solar and pay ₹0 for the next 30 years!\n\nPM Surya Ghar subsidy available up to ₹78,000 — limited slots.\n\n📞 Call us today for a FREE site assessment!\n\n👉 rollingenergy.in`,
       captionHi: `⚡ बिजली बिल ₹3,000/महीना से ज़्यादा?\n\nसोलर लगाएं और अगले 25 साल ₹0 बिल दें!\n\nPM सूर्य घर योजना में ₹78,000 तक की सब्सिडी — सीमित स्लॉट।\n\n📞 आज ही मुफ्त साइट असेसमेंट के लिए कॉल करें!`,
       captionMr: `⚡ वीज बिल ₹3,000/महिन्यापेक्षा जास्त?\n\nसोलर लावा आणि पुढे 25 वर्षे ₹0 बिल भरा!\n\nPM सूर्य घर योजनेत ₹78,000 पर्यंत अनुदान — मर्यादित जागा.\n\n📞 आजच मोफत साइट तपासणीसाठी कॉल करा!`,
       hashtags: ['SolarEnergy','GoSolar','SolarPower','RenewableEnergy','SolarIndia','PMSuryaGhar','ElectricityBill','SolarSubsidy','Maharashtra','RollingEnergy','CleanEnergy','SolarInstallation','GreenEnergy','SolarPanels','EnergyIndependence'],
@@ -193,7 +193,7 @@ function fallbackContent(
     },
     SOCIETY: {
       title: 'Reduce Society Electricity Bill 80%',
-      captionEn: `🏘️ Is your society paying ₹50,000+ per month on common area electricity?\n\nRooftop solar can bring that down by 80%!\n\n✅ Zero investment option available (RESCO model)\n✅ All paperwork handled by us\n✅ 25-year performance warranty\n\nDM us or call for a FREE society consultation! 📞`,
+      captionEn: `🏘️ Is your society paying ₹50,000+ per month on common area electricity?\n\nRooftop solar can bring that down by 80%!\n\n✅ Zero investment option available (RESCO model)\n✅ All paperwork handled by us\n✅ 30+ years engineered system life\n\nDM us or call for a FREE society consultation! 📞`,
       captionHi: `🏘️ क्या आपकी सोसायटी का बिजली बिल ₹50,000+/महीना है?\n\nसोलर से 80% तक बचाएं!\n\n✅ जीरो इन्वेस्टमेंट ऑप्शन उपलब्ध\n✅ सारी कागज़ी कार्यवाही हम करते हैं\n\nमुफ्त सोसायटी कंसल्टेशन के लिए संपर्क करें! 📞`,
       captionMr: `🏘️ तुमच्या सोसायटीचे वीज बिल ₹50,000+/महिना आहे का?\n\nसोलरने 80% वाचवा!\n\n✅ शून्य गुंतवणूक पर्याय उपलब्ध\n✅ सर्व कागदपत्रे आम्ही करतो\n\nमोफत सोसायटी सल्लामसलतीसाठी संपर्क करा! 📞`,
       hashtags: ['HousingSociety','SocietySolar','CommonAreaElectricity','SolarSociety','PuneSolar','MumbaiSolar','RESCO','BulkSolar','SocietyManagement','GreenSociety'],
@@ -213,7 +213,7 @@ function fallbackContent(
     },
     INDUSTRIAL: {
       title: 'Industrial Solar — Lowest Cost Electricity',
-      captionEn: `🏭 Manufacturing unit? Industrial facility?\n\nSolar electricity now costs ₹2–3/unit vs ₹8–12/unit from the grid!\n\n✅ 40% accelerated depreciation Year 1\n✅ Systems from 100 kW to 5 MW\n✅ On-grid + hybrid configurations\n✅ 25-year production guarantee\n\nWe've installed 50+ industrial systems in Maharashtra. Let's talk ROI.\n\n📞 Call for FREE industrial assessment.`,
+      captionEn: `🏭 Manufacturing unit? Industrial facility?\n\nSolar electricity now costs ₹2–3/unit vs ₹8–12/unit from the grid!\n\n✅ 40% accelerated depreciation Year 1\n✅ Systems from 100 kW to 5 MW\n✅ On-grid + hybrid configurations\n✅ 30-year engineered system life\n\nWe've installed 50+ industrial systems in Maharashtra. Let's talk ROI.\n\n📞 Call for FREE industrial assessment.`,
       captionHi: `🏭 मैन्युफैक्चरिंग यूनिट? इंडस्ट्रियल फैसिलिटी?\n\nसोलर बिजली अब ₹2–3/यूनिट — ग्रिड से ₹8–12/यूनिट की तुलना में!\n\n✅ Year 1 में 40% एक्सेलरेटेड डेप्रिसिएशन\n✅ 100 kW से 5 MW तक सिस्टम\n\n📞 फ्री इंडस्ट्रियल असेसमेंट के लिए कॉल करें।`,
       captionMr: `🏭 उत्पादन युनिट? औद्योगिक सुविधा?\n\nसोलर वीज आता ₹2–3/युनिट — ग्रिडच्या ₹8–12/युनिटच्या तुलनेत!\n\n✅ पहिल्या वर्षी 40% त्वरित घसारा\n✅ 100 kW ते 5 MW पर्यंत सिस्टम\n\n📞 मोफत औद्योगिक मूल्यांकनासाठी कॉल करा.`,
       hashtags: ['IndustrialSolar','ManufacturingSolar','MIDCSolar','SolarMaharashtra','IndustrialEnergy','SolarCPP','CaptivePower','SolarInfrastructure','LargeSolar','GreenManufacturing'],
@@ -223,7 +223,7 @@ function fallbackContent(
     },
     GROUND_MOUNT: {
       title: 'Earn From Your Land with Solar',
-      captionEn: `🌱 Agricultural land owner? Turn your land into a solar power plant!\n\n✅ Earn ₹35,000–₹60,000/acre/year passively\n✅ 25-year income security\n✅ Land still usable for agri-voltaics\n✅ Government policy support (RPO targets)\n\nWe've developed 10+ MW of ground-mounted projects across Maharashtra.\n\n📞 DM or call for FREE feasibility study!`,
+      captionEn: `🌱 Agricultural land owner? Turn your land into a solar power plant!\n\n✅ Earn ₹35,000–₹60,000/acre/year passively\n✅ 30-year income security\n✅ Land still usable for agri-voltaics\n✅ Government policy support (RPO targets)\n\nWe've developed 10+ MW of ground-mounted projects across Maharashtra.\n\n📞 DM or call for FREE feasibility study!`,
       captionHi: `🌱 कृषि भूमि मालिक? अपनी ज़मीन को सोलर पावर प्लांट बनाएं!\n\n✅ ₹35,000–₹60,000/एकड़/साल कमाएं\n✅ 25 साल की आय सुरक्षा\n✅ एग्री-वोल्टेइक्स के लिए ज़मीन उपयोगी\n\n📞 मुफ्त फीज़िबिलिटी स्टडी के लिए कॉल करें!`,
       captionMr: `🌱 शेतजमीन मालक? तुमची जमीन सोलर पॉवर प्लांट बनवा!\n\n✅ ₹35,000–₹60,000/एकर/वर्ष कमवा\n✅ 25 वर्षांचे उत्पन्न सुरक्षित\n✅ कृषी-व्होल्टाइक वापरासाठी जमीन उपलब्ध\n\n📞 मोफत व्यवहार्यता अभ्यासासाठी कॉल करा!`,
       hashtags: ['GroundMountSolar','SolarFarm','AgriculturalSolar','AgriVoltaics','SolarProject','LandLease','SolarIncome','MaharashtraSolar','RenewableProject','SolarDeveloper'],

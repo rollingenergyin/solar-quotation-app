@@ -113,7 +113,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
   const [gridInflation, setGridInflation] = useState('3');
   const [peakSunHours, setPeakSunHours] = useState('4');
   const [efficiency, setEfficiency] = useState('0.8');
-  const [lifeYears, setLifeYears] = useState('25');
+  const [lifeYears, setLifeYears] = useState('30');
   const [emiRate, setEmiRate] = useState('9');
   const [sanctionedLoadKw, setSanctionedLoadKw] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -449,7 +449,7 @@ export default function QuotationDetailPage({ params }: { params: { id: string }
                 <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">ROI & Savings</h3>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <Stat label="Year-1 Annual Savings" value={fmtK(result.annualSavings)} highlight />
-                  <Stat label="Lifetime Savings (25 yr)" value={fmtK(result.lifetimeSavings)} highlight />
+                  <Stat label={`Lifetime Savings (${result.inputs.systemLifeYears} yr)`} value={fmtK(result.lifetimeSavings)} highlight />
                   <Stat label="Simple Payback" value={`${result.simplePaybackYears} yrs`} />
                   <Stat label="Payback (with inflation)" value={`${result.paybackWithInflationYears} yrs`} />
                   <Stat label={`Annualised ROI (${result.inputs.systemLifeYears} yr)`}

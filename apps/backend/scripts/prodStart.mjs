@@ -39,6 +39,8 @@ const criticalSql = [
   'prisma/migrations/20260601140000_add_quotation_global_settings/migration.sql',
   'prisma/migrations/20260601150000_add_bom_options/migration.sql',
   'prisma/migrations/20260714120000_ensure_template_bom_bank_details/migration.sql',
+  'prisma/migrations/20260717170000_add_reusable_bom_templates/migration.sql',
+  'prisma/migrations/20260717173000_expand_bom_template_admin/migration.sql',
 ];
 
 for (const file of criticalSql) {

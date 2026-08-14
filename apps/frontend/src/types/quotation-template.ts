@@ -113,6 +113,26 @@ export interface BomItemAlternative {
   make: string;
 }
 
+export interface BomTemplateRecord {
+  id: string;
+  name: string;
+  description?: string | null;
+  title: string;
+  items: TemplateBomItem[];
+  isActive?: boolean;
+  isDefault?: boolean;
+  displayOrder?: number;
+  quotationTemplateId?: string | null;
+}
+
+export interface QuotationBomOption {
+  id: string;
+  templateId: string | null;
+  templateName: string;
+  title: string;
+  items: TemplateBomItem[];
+}
+
 export interface TemplateConfig {
   id: string;
   version: number;
@@ -246,6 +266,8 @@ export interface QuotationTemplateData {
 
   // Materials
   materials: QuotationMaterial[];
+  /** One primary BOM and an optional alternate BOM snapshot for this quote. */
+  bomOptions?: QuotationBomOption[];
 
   // System/site type
   systemType: 'DCR' | 'NON_DCR';

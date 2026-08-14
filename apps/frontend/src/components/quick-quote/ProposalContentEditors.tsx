@@ -5,9 +5,9 @@ import type {
   TemplatePaymentMilestone,
   TemplatePaymentMode,
   TemplateWarranty,
-  TemplateBomItem,
+  QuotationBomOption,
 } from '@/types/quotation-template';
-import BomItemsEditor from './BomItemsEditor';
+import BomComparisonEditor from './BomComparisonEditor';
 import WarrantyItemsEditor from './WarrantyItemsEditor';
 import {
   filterProposalNotePlacementOptions,
@@ -66,8 +66,8 @@ interface Props {
   onPanelWarrantyYearsChange: (v: string) => void;
   warrantyItems: TemplateWarranty[];
   onWarrantyItemsChange: (items: TemplateWarranty[]) => void;
-  bomItems: TemplateBomItem[];
-  onBomItemsChange: (items: TemplateBomItem[]) => void;
+  bomOptions: QuotationBomOption[];
+  onBomOptionsChange: (options: QuotationBomOption[]) => void;
   paymentMilestones: TemplatePaymentMilestone[];
   onPaymentMilestonesChange: (items: TemplatePaymentMilestone[]) => void;
   paymentModes: TemplatePaymentMode[];
@@ -75,6 +75,8 @@ interface Props {
   paymentTermsBullets: string[];
   onPaymentTermsBulletsChange: (items: string[]) => void;
   quotationMode: 'SINGLE' | 'COMBINED';
+  systemType: 'DCR' | 'NON_DCR';
+  siteType: 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL';
   showDepreciation: boolean;
   proposalNoteText: string;
   onProposalNoteTextChange: (v: string) => void;
@@ -90,8 +92,8 @@ export default function ProposalContentEditors({
   onPanelWarrantyYearsChange,
   warrantyItems,
   onWarrantyItemsChange,
-  bomItems,
-  onBomItemsChange,
+  bomOptions,
+  onBomOptionsChange,
   paymentMilestones,
   onPaymentMilestonesChange,
   paymentModes,
@@ -99,6 +101,8 @@ export default function ProposalContentEditors({
   paymentTermsBullets,
   onPaymentTermsBulletsChange,
   quotationMode,
+  systemType,
+  siteType,
   showDepreciation,
   proposalNoteText,
   onProposalNoteTextChange,
@@ -120,7 +124,13 @@ export default function ProposalContentEditors({
 
   useEffect(() => {
     if (!open) {
-      setSectionsOpen({ warranties: false, bom: false, payment: false, terms: false, note: false });
+      setSectionsOpen((prev) => ({
+        ...prev,
+        warranties: false,
+        payment: false,
+        terms: false,
+        note: false,
+      }));
     }
   }, [open]);
 
@@ -135,7 +145,26 @@ export default function ProposalContentEditors({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div className="space-y-3">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-3">
+          <CollapsibleSubSection
+            icon="📦"
+            title={`BOM Template Selection${bomOptions.length > 1 ? ' — 2 Options' : ''}`}
+            open={sectionsOpen.bom}
+            onToggle={() => toggleSection('bom')}
+          >
+            <BomComparisonEditor
+              options={bomOptions}
+              onChange={onBomOptionsChange}
+              systemType={systemType}
+              siteType={siteType}
+            />
+          </CollapsibleSubSection>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="px-5 py-3.5 border-b border-gray-50 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-base">✏️</span>
@@ -153,8 +182,8 @@ export default function ProposalContentEditors({
 
       {!open && (
         <div className="px-5 py-3 text-xs text-gray-400">
-          Default proposal content from the active template applies. Open <strong>Edit Deeply</strong> to
-          customise warranties, BOM, payment terms, terms &amp; conditions, and an optional proposal note before generating.
+          Open <strong>Edit Deeply</strong> for warranties, payment terms,
+          terms &amp; conditions, and an optional proposal note.
         </div>
       )}
 
@@ -172,15 +201,6 @@ export default function ProposalContentEditors({
               panelWarrantyYears={panelWarrantyYears}
               onPanelWarrantyYearsChange={onPanelWarrantyYearsChange}
             />
-          </CollapsibleSubSection>
-
-          <CollapsibleSubSection
-            icon="📦"
-            title="Bill of Materials"
-            open={sectionsOpen.bom}
-            onToggle={() => toggleSection('bom')}
-          >
-            <BomItemsEditor items={bomItems} onChange={onBomItemsChange} />
           </CollapsibleSubSection>
 
           <CollapsibleSubSection
@@ -397,6 +417,7 @@ export default function ProposalContentEditors({
           </CollapsibleSubSection>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -9,6 +9,45 @@ const requireAdmin = requireRoles('ADMIN');
 const router = Router();
 const prisma = new PrismaClient();
 
+async function ensureDefaultBomTemplate(
+  systemType: 'DCR' | 'NON_DCR',
+  siteType: 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL',
+) {
+  const existingDefault = await prisma.bomTemplate.findFirst({
+    where: { isDefault: true, isDeleted: false },
+  });
+  if (existingDefault) return existingDefault;
+
+  const firstTemplate = await prisma.bomTemplate.findFirst({
+    where: { isDeleted: false },
+    orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+  });
+  if (firstTemplate) {
+    return prisma.bomTemplate.update({
+      where: { id: firstTemplate.id },
+      data: { isDefault: true, isActive: true },
+    });
+  }
+
+  const { selectTemplateForQuotation } =
+    await import('../services/template-selection.service.js');
+  const { parseBomItemsFromBody, serializeBomItemsForJsonStorage } =
+    await import('../services/bom-items.service.js');
+  const quotationTemplate = await selectTemplateForQuotation(systemType, siteType);
+  const items = parseBomItemsFromBody(quotationTemplate?.bomItems) ?? [];
+
+  return prisma.bomTemplate.create({
+    data: {
+      name: 'Default BOM',
+      description: 'Default master BOM migrated from the active quotation template.',
+      title: 'Option 1 – Standard Components',
+      items: serializeBomItemsForJsonStorage(items),
+      isDefault: true,
+      displayOrder: 0,
+    },
+  });
+}
+
 // ── GET active template (any authenticated user — used by print page) ──────
 // Optional query: ?systemType=DCR&siteType=RESIDENTIAL to get matching template
 router.get('/active', authenticate, async (req: Request, res: Response, next: NextFunction) => {
@@ -107,6 +146,246 @@ router.put('/global/process-timeline', authenticate, requireAdmin, [
     }
     next(err);
   }
+});
+
+// ── Central BOM library ────────────────────────────────────────────────────
+router.get('/bom-library', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const systemType = req.query.systemType === 'NON_DCR' ? 'NON_DCR' : 'DCR';
+    const allowedSiteTypes = ['RESIDENTIAL', 'SOCIETY', 'COMMERCIAL', 'INDUSTRIAL'] as const;
+    const requestedSiteType = String(req.query.siteType ?? 'RESIDENTIAL');
+    const siteType = allowedSiteTypes.find((value) => value === requestedSiteType) ?? 'RESIDENTIAL';
+
+    const defaultTemplate = await ensureDefaultBomTemplate(systemType, siteType);
+    const savedTemplates = await prisma.bomTemplate.findMany({
+      where: { isActive: true, isDeleted: false, isDefault: false },
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+    });
+    const { parseBomItemsFromBody, serializeBomItemsForStorage } =
+      await import('../services/bom-items.service.js');
+
+    res.json({
+      defaultTemplate: {
+        ...defaultTemplate,
+        items: serializeBomItemsForStorage(
+          parseBomItemsFromBody(defaultTemplate.items) ?? [],
+        ),
+      },
+      templates: savedTemplates.map((template) => ({
+        ...template,
+        items: serializeBomItemsForStorage(parseBomItemsFromBody(template.items) ?? []),
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+router.get('/bom-library/manage', authenticate, requireAdmin, async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    await ensureDefaultBomTemplate('DCR', 'RESIDENTIAL');
+    const templates = await prisma.bomTemplate.findMany({
+      where: { isDeleted: false },
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+    });
+    const { parseBomItemsFromBody, serializeBomItemsForStorage } =
+      await import('../services/bom-items.service.js');
+    res.json(templates.map((template) => ({
+      ...template,
+      items: serializeBomItemsForStorage(parseBomItemsFromBody(template.items) ?? []),
+    })));
+  } catch (err) { next(err); }
+});
+
+router.post('/bom-library', authenticate, requireAdmin, [
+  body('name').trim().notEmpty().withMessage('name required'),
+  body('description').optional({ nullable: true }).isString(),
+  body('title').optional().isString(),
+  body('items').isArray({ min: 1 }).withMessage('items array required'),
+], async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { parseBomItemsFromBody, serializeBomItemsForJsonStorage } =
+      await import('../services/bom-items.service.js');
+    const parsedItems = parseBomItemsFromBody(req.body.items);
+    if (!parsedItems?.length) {
+      return res.status(400).json({ error: 'At least one valid BOM item is required' });
+    }
+
+    const name = String(req.body.name).trim();
+    const lastTemplate = await prisma.bomTemplate.findFirst({
+      where: { isDeleted: false },
+      orderBy: { displayOrder: 'desc' },
+    });
+    const saved = await prisma.bomTemplate.create({
+      data: {
+        name,
+        description: String(req.body.description ?? '').trim() || null,
+        title: String(req.body.title ?? '').trim() || name,
+        items: serializeBomItemsForJsonStorage(parsedItems),
+        displayOrder: (lastTemplate?.displayOrder ?? -1) + 1,
+        createdById: req.user!.userId,
+      },
+    });
+    res.status(201).json(saved);
+  } catch (err) { next(err); }
+});
+
+router.put('/bom-library/order', authenticate, requireAdmin, [
+  body('templateIds').isArray({ min: 1 }),
+  body('templateIds.*').isString().notEmpty(),
+], async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const templateIds = req.body.templateIds as string[];
+    await prisma.$transaction(templateIds.map((id, displayOrder) =>
+      prisma.bomTemplate.updateMany({
+        where: { id, isDeleted: false },
+        data: { displayOrder },
+      }),
+    ));
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+router.post('/bom-library/:bomTemplateId/duplicate', authenticate, requireAdmin, async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const existing = await prisma.bomTemplate.findFirst({
+      where: { id: req.params.bomTemplateId, isDeleted: false },
+    });
+    if (!existing) return res.status(404).json({ error: 'BOM template not found' });
+    const lastTemplate = await prisma.bomTemplate.findFirst({
+      where: { isDeleted: false },
+      orderBy: { displayOrder: 'desc' },
+    });
+    const { parseBomItemsFromBody, serializeBomItemsForJsonStorage } =
+      await import('../services/bom-items.service.js');
+    const items = serializeBomItemsForJsonStorage(
+      parseBomItemsFromBody(existing.items) ?? [],
+    );
+    const copy = await prisma.bomTemplate.create({
+      data: {
+        name: `${existing.name} Copy`,
+        description: existing.description,
+        title: existing.title,
+        items,
+        isActive: existing.isActive,
+        displayOrder: (lastTemplate?.displayOrder ?? -1) + 1,
+        createdById: req.user!.userId,
+      },
+    });
+    res.status(201).json(copy);
+  } catch (err) { next(err); }
+});
+
+router.post('/bom-library/:bomTemplateId/default', authenticate, requireAdmin, async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const existing = await prisma.bomTemplate.findFirst({
+      where: { id: req.params.bomTemplateId, isDeleted: false },
+    });
+    if (!existing) return res.status(404).json({ error: 'BOM template not found' });
+    await prisma.$transaction([
+      prisma.bomTemplate.updateMany({ where: { isDefault: true }, data: { isDefault: false } }),
+      prisma.bomTemplate.update({
+        where: { id: existing.id },
+        data: { isDefault: true, isActive: true },
+      }),
+    ]);
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+router.patch('/bom-library/:bomTemplateId/status', authenticate, requireAdmin, [
+  body('isActive').isBoolean(),
+], async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const existing = await prisma.bomTemplate.findFirst({
+      where: { id: req.params.bomTemplateId, isDeleted: false },
+    });
+    if (!existing) return res.status(404).json({ error: 'BOM template not found' });
+    if (existing.isDefault && req.body.isActive === false) {
+      return res.status(400).json({ error: 'Set another default before disabling this template' });
+    }
+    const updated = await prisma.bomTemplate.update({
+      where: { id: existing.id },
+      data: { isActive: req.body.isActive },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+router.put('/bom-library/:bomTemplateId', authenticate, requireAdmin, [
+  body('name').trim().notEmpty().withMessage('name required'),
+  body('description').optional({ nullable: true }).isString(),
+  body('title').optional().isString(),
+  body('items').isArray({ min: 1 }).withMessage('items array required'),
+], async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const existing = await prisma.bomTemplate.findUnique({
+      where: { id: req.params.bomTemplateId },
+    });
+    if (!existing || existing.isDeleted) {
+      return res.status(404).json({ error: 'BOM template not found' });
+    }
+
+    const { parseBomItemsFromBody, serializeBomItemsForJsonStorage } =
+      await import('../services/bom-items.service.js');
+    const parsedItems = parseBomItemsFromBody(req.body.items);
+    if (!parsedItems?.length) {
+      return res.status(400).json({ error: 'At least one valid BOM item is required' });
+    }
+
+    const name = String(req.body.name).trim();
+    const updated = await prisma.bomTemplate.update({
+      where: { id: existing.id },
+      data: {
+        name,
+        description: String(req.body.description ?? '').trim() || null,
+        title: String(req.body.title ?? '').trim() || name,
+        items: serializeBomItemsForJsonStorage(parsedItems),
+      },
+    });
+    res.json(updated);
+  } catch (err) { next(err); }
+});
+
+router.delete('/bom-library/:bomTemplateId', authenticate, requireAdmin, async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const existing = await prisma.bomTemplate.findFirst({
+      where: { id: req.params.bomTemplateId, isDeleted: false },
+    });
+    if (!existing) return res.status(404).json({ error: 'BOM template not found' });
+    if (existing.isDefault) {
+      return res.status(400).json({ error: 'Set another default before deleting this template' });
+    }
+    await prisma.bomTemplate.update({
+      where: { id: existing.id },
+      data: { isDeleted: true, isActive: false },
+    });
+    res.status(204).send();
+  } catch (err) { next(err); }
 });
 
 // ── GET single template (admin) ────────────────────────────────────────────

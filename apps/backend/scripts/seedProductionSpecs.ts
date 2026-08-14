@@ -319,7 +319,7 @@ const SPEC_MAP: Record<string, unknown> = {
     audioBpm: 108,
     slides: [
       { title: 'Grid Rate: ₹8–12/Unit', body: 'HT connection users pay premium rates. It adds up fast.', visual: 'Power grid icon with ₹12/unit price tag in red' },
-      { title: 'Solar Rate: ₹1.8–2.5/Unit', body: 'Effective cost over 25 years — 75% cheaper', visual: 'Solar panel icon with ₹2/unit in green' },
+      { title: 'Solar Rate: ₹1.8–2.5/Unit', body: 'Effective cost over 30 years — 75% cheaper', visual: 'Solar panel icon with ₹2/unit in green' },
       { title: '500 kW = ₹50L/Year Saved', body: 'Real data from our industrial installations in MIDC', visual: 'Factory + savings calculator graphic' },
       { title: '40% Tax Depreciation', body: 'Section 32 benefit makes the investment even better', visual: 'Tax document with green checkmark' },
       { title: 'Free Energy Audit', body: 'We assess your factory and show exact savings', visual: 'Factory blueprint with solar overlay' },
@@ -329,7 +329,7 @@ const SPEC_MAP: Record<string, unknown> = {
   // APR 25 — Static: Project Showcase
   '🔨 Project Showcase': staticPostSpec({
     headline: '75 kW Commercial Solar — Hadapsar, Pune ✅',
-    subtext: '₹72,000 saved monthly | 3.2-year payback | 25yr guarantee',
+    subtext: '₹72,000 saved monthly | 3.2-year payback | 30yr system life',
     colorScheme: 'dark',
     dataPoints: ['300 units/day generated', '₹8.6L annual savings', 'MSEDCL certified'],
     imagePromptEn: 'Professional photography style illustration of a large commercial building in Hadapsar Pune with 75kW solar panel array on rooftop, aerial perspective, data overlay showing project statistics, clean morning light, no people, photorealistic rendered style, proud achievement visual',
@@ -412,7 +412,7 @@ const SPEC_MAP: Record<string, unknown> = {
       { startSec: 0, endSec: 6, visual: 'Split screen appears. Left: "BEFORE" text in white. Bill envelope opening, red number ₹7,800 fills screen.', textEn: 'June 2025. Electricity bill: ₹7,800 😰', textHi: 'जून 2025. बिजली बिल: ₹7,800 😰', textMr: 'जून 2025. वीज बिल: ₹7,800 😰', transition: 'None — shock value open' },
       { startSec: 6, endSec: 14, visual: 'Calendar animation: "Rolling Energy Installation". Solar panels appearing on rooftop time-lapse style. 3 days to install.', textEn: 'Then: Rolling Energy Solar Installed ☀️', textHi: 'फिर: Rolling Energy सोलर लगाया ☀️', textMr: 'मग: Rolling Energy सोलर बसवले ☀️', transition: 'Page flip / calendar turn' },
       { startSec: 14, endSec: 23, visual: '"AFTER" reveals. Same house, bright sun, solar panels glowing. New bill envelope opens. Counter drops: ₹7,800 → ₹7,000 → ₹3,000 → ₹0', textEn: 'June 2026. Same house. Same AC. New bill: ₹0 🎉', textHi: 'जून 2026. वही घर। वही AC। नया बिल: ₹0 🎉', textMr: 'जून 2026. तेच घर. तोच AC. नवे बिल: ₹0 🎉', transition: 'Dramatic reveal wipe' },
-      { startSec: 23, endSec: 30, visual: 'Annual savings calculation: 12 × ₹7,800 = ₹93,600 per year. 25 years. Logo. Phone. Website.', textEn: 'Your turn! Comment "QUOTE" for free estimate 👇', textHi: 'आपकी बारी! "QUOTE" कमेंट करें 👇', textMr: 'तुमची वेळ! "QUOTE" कमेंट करा 👇', transition: 'Bounce scale + confetti' },
+      { startSec: 23, endSec: 30, visual: 'Annual savings calculation: 12 × ₹7,800 = ₹93,600 per year. 30 years. Logo. Phone. Website.', textEn: 'Your turn! Comment "QUOTE" for free estimate 👇', textHi: 'आपकी बारी! "QUOTE" कमेंट करें 👇', textMr: 'तुमची वेळ! "QUOTE" कमेंट करा 👇', transition: 'Bounce scale + confetti' },
     ],
   }),
 

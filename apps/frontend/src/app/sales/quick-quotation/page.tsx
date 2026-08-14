@@ -26,7 +26,9 @@ import {
 } from '@/constants/quick-quote-proposal-defaults';
 import {
   bomItemsFromStored,
-  serializeBomItems,
+  createQuotationBomOption,
+  quotationBomOptionsFromStored,
+  serializeQuotationBomOptions,
 } from '@/constants/bom-items';
 import {
   warrantyItemsFromStored,
@@ -37,6 +39,7 @@ import type {
   TemplatePaymentMilestone,
   TemplatePaymentMode,
   TemplateWarranty,
+  QuotationBomOption,
 } from '@/types/quotation-template';
 import {
   QUOTATION_MODE_OPTIONS,
@@ -250,11 +253,12 @@ export default function QuickQuotationPage() {
     () => DEFAULT_WARRANTY_ITEMS.map((w) => ({ ...w })),
   );
 
-  const [bomItems, setBomItems] = useState<TemplateBomItem[]>(() =>
-    bomItemsFromStored(DEFAULT_QUICK_QUOTE_BOM).length
-      ? bomItemsFromStored(DEFAULT_QUICK_QUOTE_BOM)
-      : DEFAULT_QUICK_QUOTE_BOM.map((b) => ({ ...b })),
-  );
+  const [bomOptions, setBomOptions] = useState<QuotationBomOption[]>(() => [
+    createQuotationBomOption(1, DEFAULT_QUICK_QUOTE_BOM, {
+      id: 'default',
+      name: 'Default BOM',
+    }),
+  ]);
   const [paymentMilestones, setPaymentMilestones] = useState<TemplatePaymentMilestone[]>(() =>
     DEFAULT_QUICK_QUOTE_PAYMENT_MILESTONES.map((m) => ({ ...m })),
   );
@@ -404,6 +408,49 @@ export default function QuickQuotationPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const leadId = searchParams.get('leadId');
+    if (!leadId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const lead = await api<{
+          name: string;
+          companyName: string;
+          phone: string;
+          email: string;
+          location?: string | null;
+          solarCapacity?: number | null;
+          solarCalculatorResults?: { tariffPerKwh?: number; systemSizeKw?: number } | null;
+        }>(`/website-leads/${leadId}`);
+        if (cancelled) return;
+        setCustomerName(lead.companyName || lead.name);
+        setPhone(lead.phone || '');
+        setEmail(lead.email || '');
+        if (lead.location) {
+          setAddress(lead.location);
+          setCity(lead.location);
+        } else {
+          setAddress((current) => current || 'Site address to be confirmed');
+        }
+        setSiteType('INDUSTRIAL');
+        setSystemType('NON_DCR');
+        const kw = lead.solarCapacity || lead.solarCalculatorResults?.systemSizeKw;
+        if (kw && Number.isFinite(kw)) {
+          setSizingMode('direct');
+          setDirectKw(String(kw));
+        }
+        const tariff = lead.solarCalculatorResults?.tariffPerKwh;
+        if (tariff && Number.isFinite(tariff)) setElectricityRate(String(tariff));
+      } catch {
+        /* lead prefill is optional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
+
   // Load template proposal defaults when system/site type changes
   useEffect(() => {
     api<{
@@ -424,11 +471,10 @@ export default function QuickQuotationPage() {
           setWarrantyItems(DEFAULT_WARRANTY_ITEMS.map((w) => ({ ...w })));
         }
         const loaded = bomItemsFromStored(tpl.bomItems, tpl.bomOptions);
-        if (loaded.length) {
-          setBomItems(loaded);
-        } else {
-          setBomItems(DEFAULT_QUICK_QUOTE_BOM.map((b) => ({ ...b })));
-        }
+        const primaryItems = loaded.length
+          ? loaded
+          : DEFAULT_QUICK_QUOTE_BOM.map((item) => ({ ...item }));
+        setBomOptions(quotationBomOptionsFromStored(undefined, primaryItems));
         if (tpl.paymentMilestones?.length) {
           setPaymentMilestones(tpl.paymentMilestones.map((m) => ({ ...m })));
         } else {
@@ -448,7 +494,12 @@ export default function QuickQuotationPage() {
       .catch(() => {
         setPanelWarrantyYears('25');
         setWarrantyItems(DEFAULT_WARRANTY_ITEMS.map((w) => ({ ...w })));
-        setBomItems(DEFAULT_QUICK_QUOTE_BOM.map((b) => ({ ...b })));
+        setBomOptions([
+          createQuotationBomOption(1, DEFAULT_QUICK_QUOTE_BOM, {
+            id: 'default',
+            name: 'Default BOM',
+          }),
+        ]);
         setPaymentMilestones(DEFAULT_QUICK_QUOTE_PAYMENT_MILESTONES.map((m) => ({ ...m })));
         setPaymentModes(DEFAULT_QUICK_QUOTE_PAYMENT_MODES.map((m) => ({ ...m })));
         setPaymentTermsBullets([...DEFAULT_QUICK_QUOTE_TERMS_BULLETS]);
@@ -634,7 +685,8 @@ export default function QuickQuotationPage() {
         structureOption,
         panelWarrantyYears: parseInt(panelWarrantyYears, 10) || 25,
         warrantyItems: serializeWarrantyItems(warrantyItems),
-        bomItems: serializeBomItems(bomItems),
+        bomOptions: serializeQuotationBomOptions(bomOptions),
+        bomItems: serializeQuotationBomOptions(bomOptions)[0]?.items ?? [],
         paymentMilestones: paymentMilestones.filter((m) => m.title.trim()),
         paymentModes: paymentModes.filter((m) => m.label.trim()),
         paymentTermsBullets: paymentTermsBullets.filter((b) => b.trim()),
@@ -665,6 +717,18 @@ export default function QuickQuotationPage() {
         method: 'POST',
         body: JSON.stringify(body),
       });
+
+      const leadId = searchParams.get('leadId');
+      if (leadId) {
+        try {
+          await api(`/website-leads/${leadId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ quotationId: res.quotationId, status: 'QUOTATION' }),
+          });
+        } catch {
+          /* quotation already created */
+        }
+      }
 
       router.push(`/quotation/${res.quotationId}/print`);
     } catch (e) {
@@ -1139,8 +1203,8 @@ export default function QuickQuotationPage() {
             onPanelWarrantyYearsChange={setPanelWarrantyYears}
             warrantyItems={warrantyItems}
             onWarrantyItemsChange={setWarrantyItems}
-            bomItems={bomItems}
-            onBomItemsChange={setBomItems}
+            bomOptions={bomOptions}
+            onBomOptionsChange={setBomOptions}
             paymentMilestones={paymentMilestones}
             onPaymentMilestonesChange={setPaymentMilestones}
             paymentModes={paymentModes}
@@ -1148,6 +1212,8 @@ export default function QuickQuotationPage() {
             paymentTermsBullets={paymentTermsBullets}
             onPaymentTermsBulletsChange={setPaymentTermsBullets}
             quotationMode={quotationMode}
+            systemType={systemType}
+            siteType={siteType}
             showDepreciation={showDepreciation}
             proposalNoteText={proposalNoteText}
             onProposalNoteTextChange={setProposalNoteText}

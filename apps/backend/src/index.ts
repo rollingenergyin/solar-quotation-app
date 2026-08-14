@@ -15,8 +15,12 @@ app.use(
     origin: [
       'http://localhost:3000',
       'http://127.0.0.1:3000',
+      'http://localhost:3011',
+      'http://127.0.0.1:3011',
       'https://solar-quotation-app.onrender.com',
       'https://solar.rollingenergy.in',
+      'https://rollingenergy.co',
+      'https://www.rollingenergy.co',
     ],
     credentials: true,
   })

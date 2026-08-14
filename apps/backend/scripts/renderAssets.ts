@@ -321,7 +321,7 @@ function buildCarouselSlideHtml(post: any, slide: any, slideIdx: number, totalSl
       <div class="topbar"></div>
       <div class="icon">☀️</div>
       <div class="headline">Ready to Go Solar?</div>
-      <div class="sub">Free site visit · MSEDCL approved · 25yr warranty</div>
+      <div class="sub">Free site visit · MSEDCL approved · 30yr system life</div>
       <div class="btn">Get Free Quote Today →</div>
       <div class="contacts"><span>📞 ${BRAND.phone}</span><span>🌐 ${BRAND.website}</span></div>
       <div class="footer">

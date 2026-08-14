@@ -92,6 +92,7 @@ export default function QuotationPrint({ data, isPdfMode = false, quotationId }:
     emi5YrTotalPayable, emi5YrTotalInterest,
     emi7YrTotalPayable, emi7YrTotalInterest,
     materials, gridInflationPct,
+    bomOptions,
     sanctionedLoadKw,
     sanctionedLoadIncreasedToKw,
     panelWattageWp,
@@ -244,6 +245,7 @@ export default function QuotationPrint({ data, isPdfMode = false, quotationId }:
           systemSizeKw={systemSizeKw}
           inverterSizeKw={inverterSizeKw ?? systemSizeKw}
           materials={materials}
+          bomOptions={bomOptions}
           config={templateConfig}
           panelWattageWp={panelWattageWp}
           numModules={numModules}

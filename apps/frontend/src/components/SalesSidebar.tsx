@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 const navItems = [
   { href: '/sales',                  label: 'Dashboard',      icon: '⊞' },
   { href: '/sales/crm',              label: 'CRM',            icon: '🎯' },
+  { href: '/sales/leads',            label: 'Website Leads',  icon: '📥' },
   { href: '/sales/customers',        label: 'Customers',      icon: '👥' },
   { href: '/sales/quotations',       label: 'My Quotations',  icon: '📋' },
   { href: '/sales/quick-quotation',  label: 'Quick Quote',    icon: '⚡' },

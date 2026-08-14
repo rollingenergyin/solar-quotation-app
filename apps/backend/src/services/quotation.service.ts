@@ -161,7 +161,7 @@ export async function calculateQuotation(
   const gridInflationPct = input.gridInflationPct  ?? sysDefaults['grid_inflation_pct'] ?? 3;
   const peakSunHours     = input.peakSunHours      ?? sysDefaults['peak_sun_hours']     ?? 4;
   const systemEfficiency = input.systemEfficiency  ?? (sysDefaults['system_efficiency'] != null ? sysDefaults['system_efficiency'] / 100 : 0.8);
-  const systemLifeYears  = input.systemLifeYears   ?? sysDefaults['system_life_years']  ?? 25;
+  const systemLifeYears  = input.systemLifeYears   ?? sysDefaults['system_life_years']  ?? 30;
   const emiRatePct       = input.emiRatePct        ?? sysDefaults['emi_rate_pct']       ?? 9;
   const systemType       = input.systemType        ?? 'DCR';
   const siteType         = (input.siteType ?? 'RESIDENTIAL') as 'RESIDENTIAL' | 'SOCIETY' | 'COMMERCIAL' | 'INDUSTRIAL';

@@ -11,6 +11,7 @@ const navItems = [
   { href: '/finance/dashboard', label: 'Finance Panel', icon: '💰' },
   // Solar Growth OS
   { href: '/admin/crm',    label: 'CRM Panel',    icon: '🎯' },
+  { href: '/admin/leads',  label: 'Leads',        icon: '📥' },
   { href: '/admin/social', label: 'Social Media',  icon: '📱' },
   // Existing
   { href: '/admin/users', label: 'Sales Users', icon: '👥' },
@@ -19,6 +20,7 @@ const navItems = [
   { href: '/admin/pricing', label: 'Weekly Pricing', icon: '₹' },
   { href: '/admin/formulas', label: 'Formulas', icon: 'ƒ' },
   { href: '/admin/templates', label: 'Quote Template', icon: '📄' },
+  { href: '/admin/bom-templates', label: 'BOM Templates', icon: '📦' },
   { href: '/admin/attendance', label: 'Attendance', icon: '⏱' },
   { href: '/admin/audit', label: 'Audit Logs', icon: '⊙' },
 ];

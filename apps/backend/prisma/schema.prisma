@@ -21,37 +21,39 @@ enum UserStatus {
 }
 
 model User {
-  id           String     @id @default(cuid())
-  userId       String     @unique  // Login identifier (e.g. sales01)
-  email        String     @unique
-  password     String
-  name         String
-  phone        String?
-  designation  String?
-  role         Role       @default(SALES)
-  status       UserStatus @default(ACTIVE)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  id          String     @id @default(cuid())
+  userId      String     @unique // Login identifier (e.g. sales01)
+  email       String     @unique
+  password    String
+  name        String
+  phone       String?
+  designation String?
+  role        Role       @default(SALES)
+  status      UserStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
-  customers           Customer[]
-  quotations          Quotation[]
-  formulaVersions     FormulaVersion[]
-  weeklyPrices        WeeklyPrice[]
-  auditLogs           AuditLog[]
-  quotationTemplates  QuotationTemplate[]
+  customers          Customer[]
+  quotations         Quotation[]
+  formulaVersions    FormulaVersion[]
+  weeklyPrices       WeeklyPrice[]
+  auditLogs          AuditLog[]
+  quotationTemplates QuotationTemplate[]
+  bomTemplates       BomTemplate[]
 
   // Attendance
-  attendancePolicy      AttendancePolicy?
-  attendanceDays        AttendanceDay[]
-  attendanceCorrections AttendanceCorrection[] @relation("AttendanceCorrectionAdmin")
-  leaveRequests         LeaveRequest[]         @relation("LeaveRequestUser")
-  leaveApprovals        LeaveRequest[]         @relation("LeaveRequestApprover")
-  compOffRequests       CompOffRequest[]       @relation("CompOffUser")
-  compOffApprovals      CompOffRequest[]       @relation("CompOffApprover")
-  workflowRequests      WorkflowRequest[]      @relation("WorkflowRequester")
-  workflowApprovals     WorkflowApproval[]     @relation("WorkflowApprover")
+  attendancePolicy        AttendancePolicy?
+  attendanceDays          AttendanceDay[]
+  attendanceCorrections   AttendanceCorrection[]   @relation("AttendanceCorrectionAdmin")
+  leaveRequests           LeaveRequest[]           @relation("LeaveRequestUser")
+  leaveApprovals          LeaveRequest[]           @relation("LeaveRequestApprover")
+  compOffRequests         CompOffRequest[]         @relation("CompOffUser")
+  compOffApprovals        CompOffRequest[]         @relation("CompOffApprover")
+  workflowRequests        WorkflowRequest[]        @relation("WorkflowRequester")
+  workflowApprovals       WorkflowApproval[]       @relation("WorkflowApprover")
   attendanceNotifications AttendanceNotification[] @relation("AttNotifUser")
   crmLeads                CrmLead[]                @relation("CrmLeadAssignee")
+  websiteLeads            WebsiteLead[]            @relation("WebsiteLeadAssignee")
 
   @@map("users")
 }
@@ -59,23 +61,23 @@ model User {
 // ─── Customers ───────────────────────────────────────────────────────────────
 
 model Customer {
-  id        String   @id @default(cuid())
-  name      String
-  email     String?
-  phone     String?
-  address   String?
-  city      String?
-  state     String?
-  pincode   String?
-  company   String?
-  gstin     String?
-  notes     String?
+  id          String   @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  state       String?
+  pincode     String?
+  company     String?
+  gstin       String?
+  notes       String?
   createdById String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  createdBy User   @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  sites     Site[]
+  createdBy  User        @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  sites      Site[]
   quotations Quotation[]
 
   @@map("customers")
@@ -92,26 +94,26 @@ enum RoofType {
 }
 
 model Site {
-  id           String    @id @default(cuid())
-  customerId   String
-  name         String?
-  address      String
-  city         String?
-  state        String?
-  pincode      String?
-  roofType     RoofType?
-  roofAreaSqM  Float?
-  orientation  String?   // N, S, E, W, NE, etc.
-  tiltAngle    Float?
-  latitude     Float?
-  longitude    Float?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  customerId  String
+  name        String?
+  address     String
+  city        String?
+  state       String?
+  pincode     String?
+  roofType    RoofType?
+  roofAreaSqM Float?
+  orientation String? // N, S, E, W, NE, etc.
+  tiltAngle   Float?
+  latitude    Float?
+  longitude   Float?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  customer        Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer         Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
   electricityBills ElectricityBill[]
-  quotations      Quotation[]
+  quotations       Quotation[]
 
   @@map("sites")
 }
@@ -124,17 +126,17 @@ enum BillSource {
 }
 
 model ElectricityBill {
-  id          String    @id @default(cuid())
-  siteId      String
-  month       Int       // 1-12
-  year        Int
-  unitsKwh    Float     // monthly consumption
-  amount      Float?    // bill amount in rupees
+  id           String     @id @default(cuid())
+  siteId       String
+  month        Int // 1-12
+  year         Int
+  unitsKwh     Float // monthly consumption
+  amount       Float? // bill amount in rupees
   billImageUrl String?
-  ocrRawData  Json?     // raw OCR output for reference
-  source      BillSource @default(MANUAL)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  ocrRawData   Json? // raw OCR output for reference
+  source       BillSource @default(MANUAL)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
@@ -172,14 +174,14 @@ model Material {
   name       String
   brand      String?
   model      String?
-  specs      Json?        // { wattage, efficiency, warrantyYears, capacity, etc. }
+  specs      Json? // { wattage, efficiency, warrantyYears, capacity, etc. }
   unit       MaterialUnit @default(PIECE)
   basePrice  Float?
   isActive   Boolean      @default(true)
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
-  category           MaterialCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category           MaterialCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   quotationMaterials QuotationMaterial[]
   weeklyPrices       WeeklyPrice[]
 
@@ -192,7 +194,7 @@ model PricingType {
   id          String   @id @default(cuid())
   name        String
   slug        String   @unique
-  unit        String   // WATT, UNIT, SQ_M, LUMP
+  unit        String // WATT, UNIT, SQ_M, LUMP
   description String?
   isActive    Boolean  @default(true)
   sortOrder   Int      @default(0)
@@ -224,8 +226,8 @@ model Formula {
 model FormulaVersion {
   id          String   @id @default(cuid())
   formulaId   String
-  expression  String   // e.g. "totalWattage * pricePerWatt"
-  variables   Json     // ["totalWattage", "pricePerWatt"]
+  expression  String // e.g. "totalWattage * pricePerWatt"
+  variables   Json // ["totalWattage", "pricePerWatt"]
   description String?
   isActive    Boolean  @default(true)
   createdById String
@@ -267,40 +269,41 @@ enum QuotationType {
 }
 
 model Quotation {
-  id          String          @id @default(cuid())
-  customerId  String
-  siteId      String
-  quoteNumber String          @unique
-  status      QuotationStatus  @default(DRAFT)
-  systemType        SystemType      @default(DCR)
-  siteType          SiteType        @default(RESIDENTIAL)
-  sanctionedLoadKw  Float?
-  sanctionedLoadIncreasedToKw Float? @map("sanctioned_load_increased_to_kw") // target load after increase (optional)
-  inverterSizeKw    Float?
-  validUntil        DateTime?
-  totalWattage Float?
-  totalAmount  Float?
-  notes       String?
-  createdById String
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  id                          String          @id @default(cuid())
+  customerId                  String
+  siteId                      String
+  quoteNumber                 String          @unique
+  status                      QuotationStatus @default(DRAFT)
+  systemType                  SystemType      @default(DCR)
+  siteType                    SiteType        @default(RESIDENTIAL)
+  sanctionedLoadKw            Float?
+  sanctionedLoadIncreasedToKw Float?          @map("sanctioned_load_increased_to_kw") // target load after increase (optional)
+  inverterSizeKw              Float?
+  validUntil                  DateTime?
+  totalWattage                Float?
+  totalAmount                 Float?
+  notes                       String?
+  createdById                 String
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
 
   // Saved Quotations System
-  quotationType     QuotationType  @default(NORMAL)
-  version           Int            @default(1)
+  quotationType     QuotationType @default(NORMAL)
+  version           Int           @default(1)
   parentQuotationId String?
-  quotationDataJson Json?          // Full snapshot for edit/replay
-  generatedPdfPath  String?       // Path to stored PDF file
-  isPricingLocked   Boolean        @default(false) @map("isPricingLocked")
+  quotationDataJson Json? // Full snapshot for edit/replay
+  generatedPdfPath  String? // Path to stored PDF file
+  isPricingLocked   Boolean       @default(false) @map("isPricingLocked")
 
-  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  site       Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  createdBy  User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  parent     Quotation?  @relation("QuotationVersions", fields: [parentQuotationId], references: [id], onDelete: SetNull)
-  versions   Quotation[] @relation("QuotationVersions")
-  materials  QuotationMaterial[]
-  pricings   QuotationPricing[]
-  result     QuotationResult?
+  customer  Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  site      Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  createdBy User                @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  parent    Quotation?          @relation("QuotationVersions", fields: [parentQuotationId], references: [id], onDelete: SetNull)
+  versions  Quotation[]         @relation("QuotationVersions")
+  materials    QuotationMaterial[]
+  pricings     QuotationPricing[]
+  result       QuotationResult?
+  websiteLeads WebsiteLead[]
 
   @@map("quotations")
 }
@@ -310,40 +313,41 @@ model QuotationSequence {
   id        String   @id @default("main")
   nextValue Int      @default(1)
   updatedAt DateTime @updatedAt
+
   @@map("quotation_sequence")
 }
 
 model QuotationMaterial {
-  id           String   @id @default(cuid())
-  quotationId  String
-  materialId   String
-  quantity     Float
-  unitPrice    Float
-  totalPrice   Float
-  specsOverride Json?   // overrides for this line item
-  notes        String?
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(cuid())
+  quotationId   String
+  materialId    String
+  quantity      Float
+  unitPrice     Float
+  totalPrice    Float
+  specsOverride Json? // overrides for this line item
+  notes         String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  material Material   @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  material  Material  @relation(fields: [materialId], references: [id], onDelete: Restrict)
 
   @@map("quotation_materials")
 }
 
 model QuotationPricing {
-  id             String   @id @default(cuid())
-  quotationId    String
-  pricingTypeId  String
+  id               String   @id @default(cuid())
+  quotationId      String
+  pricingTypeId    String
   formulaVersionId String?
-  value          Float    // e.g. price per watt
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  value            Float // e.g. price per watt
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  quotation      Quotation      @relation(fields: [quotationId], references: [id], onDelete: Cascade)
-  pricingType    PricingType    @relation(fields: [pricingTypeId], references: [id], onDelete: Restrict)
+  quotation      Quotation       @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  pricingType    PricingType     @relation(fields: [pricingTypeId], references: [id], onDelete: Restrict)
   formulaVersion FormulaVersion? @relation(fields: [formulaVersionId], references: [id], onDelete: SetNull)
 
   @@unique([quotationId, pricingTypeId])
@@ -353,14 +357,14 @@ model QuotationPricing {
 // ─── Weekly Material Pricing ─────────────────────────────────────────────────
 
 model WeeklyPrice {
-  id         String   @id @default(cuid())
-  materialId String
-  pricePerUnit Float
+  id            String    @id @default(cuid())
+  materialId    String
+  pricePerUnit  Float
   effectiveFrom DateTime
   effectiveTo   DateTime?
-  notes      String?
-  createdById String
-  createdAt  DateTime @default(now())
+  notes         String?
+  createdById   String
+  createdAt     DateTime  @default(now())
 
   material  Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
   createdBy User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
@@ -371,15 +375,15 @@ model WeeklyPrice {
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String
-  action     String   // CREATE | UPDATE | DELETE
-  entity     String   // material | formula | pricing | bill
-  entityId   String
-  before     Json?
-  after      Json?
-  ipAddress  String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  action    String // CREATE | UPDATE | DELETE
+  entity    String // material | formula | pricing | bill
+  entityId  String
+  before    Json?
+  after     Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
@@ -405,11 +409,11 @@ model SystemParam {
 // ─── Editable Quotation Template ─────────────────────────────────────────────
 
 model QuotationTemplate {
-  id      String  @id @default(cuid())
-  version Int     @default(1)
-  name    String  @default("Default Template")
-  isActive Boolean @default(false)
-  isDeleted Boolean @default(false)
+  id                String  @id @default(cuid())
+  version           Int     @default(1)
+  name              String  @default("Default Template")
+  isActive          Boolean @default(false)
+  isDeleted         Boolean @default(false)
   isDefaultTemplate Boolean @default(false)
 
   // Template selection conditions (for automatic matching)
@@ -432,8 +436,8 @@ model QuotationTemplate {
   // BOM configuration (admin controls)
   bomShowQty  Boolean @default(false)
   bomShowUnit Boolean @default(false)
-  bomItems    Json?   // TemplateBomItem[] — null means use system default (legacy / primary option)
-  bomOptions  Json?   // deprecated — legacy full-BOM alternatives; use bomItems[].alternatives
+  bomItems    Json? // TemplateBomItem[] — null means use system default (legacy / primary option)
+  bomOptions  Json? // deprecated — legacy full-BOM alternatives; use bomItems[].alternatives
 
   // Subsidy configuration (DCR only)
   subsidyResidential1kw     Float @default(30000)
@@ -442,26 +446,26 @@ model QuotationTemplate {
   subsidySocietyPerKw       Float @default(18000)
 
   // Depreciation configuration (Non-DCR systems)
-  depreciationNote  String  @default("This solar installation may qualify for accelerated depreciation benefits under applicable tax rules. Assets used for business purposes are eligible for depreciation under the Income Tax Act.")
-  depreciationTable Json    // {year:string, rate:string, note:string}[]
+  depreciationNote  String @default("This solar installation may qualify for accelerated depreciation benefits under applicable tax rules. Assets used for business purposes are eligible for depreciation under the Income Tax Act.")
+  depreciationTable Json // {year:string, rate:string, note:string}[]
 
   // Editable page content (stored as JSON arrays/objects)
-  introLetterBody     Json  // string[]
-  aboutParagraphs     Json  // string[]
+  introLetterBody     Json // string[]
+  aboutParagraphs     Json // string[]
   aboutMission        String
-  aboutStats          Json  // {label:string, value:string}[]
-  aboutHighlights     Json  // {icon,title,desc}[]
-  processSteps        Json  // {step,title,subtitle,desc,icon,duration}[]
+  aboutStats          Json // {label:string, value:string}[]
+  aboutHighlights     Json // {icon,title,desc}[]
+  processSteps        Json // {step,title,subtitle,desc,icon,duration}[]
   processTimelineText String @default("Total Timeline: 10–18 Working Days")
-  maintenanceServices Json  // {icon,title,desc}[]
-  warrantyItems       Json  // {item,warranty}[]
-  paymentMilestones   Json  // {step,title,pct,desc,icon}[]
-  paymentTermsBullets Json  // string[]
-  paymentModes        Json  // {icon,label}[]
+  maintenanceServices Json // {icon,title,desc}[]
+  warrantyItems       Json // {item,warranty}[]
+  paymentMilestones   Json // {step,title,pct,desc,icon}[]
+  paymentTermsBullets Json // string[]
+  paymentModes        Json // {icon,label}[]
   bankDetails         Json? // {accountName,accountNumber,bankName,accountType,ifscCode}
-  whyReasons          Json  // {icon,title,desc}[]
-  testimonials        Json  // {name,location,text}[]
-  certifications      Json  // string[]
+  whyReasons          Json // {icon,title,desc}[]
+  testimonials        Json // {name,location,text}[]
+  certifications      Json // string[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -469,6 +473,27 @@ model QuotationTemplate {
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("quotation_templates")
+}
+
+/// Reusable BOM presets selectable while creating a quotation.
+/// Per-quotation edits are stored as snapshots in quotationDataJson.
+model BomTemplate {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  title        String
+  items        Json
+  isActive     Boolean  @default(true)
+  isDefault    Boolean  @default(false)
+  isDeleted    Boolean  @default(false)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  String?
+  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([isDeleted, isActive, displayOrder])
+  @@map("bom_templates")
 }
 
 /// Global quotation settings shared across all templates (singleton row id = "default").
@@ -485,13 +510,13 @@ model QuotationGlobalSettings {
 model QuotationResult {
   id                  String   @id @default(cuid())
   quotationId         String   @unique
-  roiYears            Float?    // years to break even
-  roiPercentage       Float?   // annual ROI %
+  roiYears            Float? // years to break even
+  roiPercentage       Float? // annual ROI %
   emiMonthly          Float?
   emiTenureMonths     Int?
-  totalSavings        Float?   // lifetime savings estimate
+  totalSavings        Float? // lifetime savings estimate
   paybackPeriodMonths Int?
-  breakdown           Json?    // { yearlySavings: [], emiSchedule: [] }
+  breakdown           Json? // { yearlySavings: [], emiSchedule: [] }
   notes               String?
   calculatedAt        DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -547,17 +572,17 @@ model Vendor {
 model FinanceClient {
   id          String   @id @default(cuid())
   name        String
-  companyName String?  // billing / legal entity name
+  companyName String? // billing / legal entity name
   gstin       String?
   contact     String?
   address     String?
-  customerId  String?  // link to existing Customer
+  customerId  String? // link to existing Customer
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  sites       FinanceSite[]
-  salesBills   SalesBill[]
-  invoices     Invoice[]
+  sites      FinanceSite[]
+  salesBills SalesBill[]
+  invoices   Invoice[]
 
   @@map("finance_clients")
 }
@@ -573,28 +598,28 @@ model FinanceSite {
   client            FinanceClient      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   projects          FinanceProject[]
   bankTransactions  BankTransaction[]
-  transactionSplits  TransactionSplit[]
-  transactionRules   TransactionRule[]
+  transactionSplits TransactionSplit[]
+  transactionRules  TransactionRule[]
 
   @@map("finance_sites")
 }
 
 model FinanceProject {
-  id             String   @id @default(cuid())
-  name           String
-  code           String?  @unique
-  financeSiteId  String?
-  quotationId    String?
-  status         String?  @default("ACTIVE")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  code          String?  @unique
+  financeSiteId String?
+  quotationId   String?
+  status        String?  @default("ACTIVE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  financeSite    FinanceSite? @relation(fields: [financeSiteId], references: [id], onDelete: SetNull)
+  financeSite    FinanceSite?    @relation(fields: [financeSiteId], references: [id], onDelete: SetNull)
   expenses       Expense[]
   incomes        Income[]
-  purchaseBills   PurchaseBill[]
+  purchaseBills  PurchaseBill[]
   salesBills     SalesBill[]
-  stockMovements  StockMovement[]
+  stockMovements StockMovement[]
 
   @@map("finance_projects")
 }
@@ -602,7 +627,7 @@ model FinanceProject {
 model BankStatementUpload {
   id        String   @id @default(cuid())
   fileName  String
-  rawData   Json     // original parsed rows
+  rawData   Json // original parsed rows
   createdAt DateTime @default(now())
 
   transactions BankTransaction[]
@@ -632,29 +657,29 @@ enum BankBillUploadTag {
 }
 
 model BankTransaction {
-  id                String   @id @default(cuid())
-  uploadId          String
-  sortOrder         Int      @default(0) @map("sort_order") // manual order within upload (drag-drop)
-  transactionDate   DateTime
-  valueDate         DateTime?
-  referenceNo       String?
-  rawDescription    String?  // original from file
-  description       String?  // cleaned/parsed description
-  partyName         String?
-  amount            Float    // always positive; type indicates debit/credit
-  type              FinanceTransactionType  // EXPENSE=debit, INCOME=credit
-  categoryId        String?  // TransactionCategory (user-manageable)
-  siteId            String?  // FinanceSite (all modules link to Site)
-  isSplit           Boolean  @default(false)
-  isReviewed        Boolean  @default(false)
-  duplicateOfId     String?  // if duplicate, points to canonical transaction
-  processed         Boolean  @default(false)
-  manualOverride    Boolean  @default(false)
-  invoiceStatus     BankInvoiceTag? @map("invoice_status")
-  billUploadStatus  BankBillUploadTag? @map("bill_upload_status")
-  deletedAt         DateTime? @map("deleted_at")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String                 @id @default(cuid())
+  uploadId         String
+  sortOrder        Int                    @default(0) @map("sort_order") // manual order within upload (drag-drop)
+  transactionDate  DateTime
+  valueDate        DateTime?
+  referenceNo      String?
+  rawDescription   String? // original from file
+  description      String? // cleaned/parsed description
+  partyName        String?
+  amount           Float // always positive; type indicates debit/credit
+  type             FinanceTransactionType // EXPENSE=debit, INCOME=credit
+  categoryId       String? // TransactionCategory (user-manageable)
+  siteId           String? // FinanceSite (all modules link to Site)
+  isSplit          Boolean                @default(false)
+  isReviewed       Boolean                @default(false)
+  duplicateOfId    String? // if duplicate, points to canonical transaction
+  processed        Boolean                @default(false)
+  manualOverride   Boolean                @default(false)
+  invoiceStatus    BankInvoiceTag?        @map("invoice_status")
+  billUploadStatus BankBillUploadTag?     @map("bill_upload_status")
+  deletedAt        DateTime?              @map("deleted_at")
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
   upload       BankStatementUpload  @relation(fields: [uploadId], references: [id], onDelete: Cascade)
   category     TransactionCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -669,35 +694,35 @@ model BankTransaction {
 }
 
 model TransactionSplit {
-  id            String   @id @default(cuid())
-  transactionId String
-  categoryId    String
-  siteId        String?
-  amount        Float
-  description   String?
-  invoiceStatus BankInvoiceTag? @map("invoice_status")
+  id               String             @id @default(cuid())
+  transactionId    String
+  categoryId       String
+  siteId           String?
+  amount           Float
+  description      String?
+  invoiceStatus    BankInvoiceTag?    @map("invoice_status")
   billUploadStatus BankBillUploadTag? @map("bill_upload_status")
-  createdAt     DateTime @default(now())
+  createdAt        DateTime           @default(now())
 
-  transaction BankTransaction       @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  category    TransactionCategory   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  site        FinanceSite?          @relation(fields: [siteId], references: [id], onDelete: SetNull)
-  purchaseBill PurchaseBill?        @relation("PurchaseBillSplitTransaction")
-  salesBill    SalesBill?           @relation("SalesBillSplitTransaction")
+  transaction  BankTransaction     @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  category     TransactionCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  site         FinanceSite?        @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  purchaseBill PurchaseBill?       @relation("PurchaseBillSplitTransaction")
+  salesBill    SalesBill?          @relation("SalesBillSplitTransaction")
 
   @@map("finance_transaction_splits")
 }
 
 model TransactionRule {
-  id          String   @id @default(cuid())
-  name        String?
-  priority    Int      @default(0)  // higher = applied first
-  conditions  Json     // { partyName?: string, partyNameContains?: string, descriptionContains?: string, ... }
-  category    ExpenseCategory?
-  siteId      String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String           @id @default(cuid())
+  name       String?
+  priority   Int              @default(0) // higher = applied first
+  conditions Json // { partyName?: string, partyNameContains?: string, descriptionContains?: string, ... }
+  category   ExpenseCategory?
+  siteId     String?
+  isActive   Boolean          @default(true)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 
   site FinanceSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
 
@@ -718,14 +743,14 @@ model Expense {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  vendor   Vendor?          @relation(fields: [vendorId], references: [id], onDelete: SetNull)
-  project  FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  vendor  Vendor?         @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  project FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@map("finance_expenses")
 }
 
 model Income {
-  id          String   @id @default(cuid())
+  id          String       @id @default(cuid())
   amount      Float
   category    String?
   siteId      String?
@@ -733,8 +758,8 @@ model Income {
   paymentMode PaymentMode?
   description String?
   projectId   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   project FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
@@ -742,47 +767,47 @@ model Income {
 }
 
 model PurchaseBill {
-  id           String   @id @default(cuid())
-  vendorId     String
-  projectId    String?
-  gstNumber    String?
-  invoiceNo    String
-  baseAmount   Float
-  gstAmount    Float
-  totalAmount  Float
-  fileUrl      String?
-  bankTransactionId String? @unique @map("bank_transaction_id")
-  transactionSplitId String? @unique @map("transaction_split_id")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  vendorId           String
+  projectId          String?
+  gstNumber          String?
+  invoiceNo          String
+  baseAmount         Float
+  gstAmount          Float
+  totalAmount        Float
+  fileUrl            String?
+  bankTransactionId  String?  @unique @map("bank_transaction_id")
+  transactionSplitId String?  @unique @map("transaction_split_id")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  vendor           Vendor             @relation(fields: [vendorId], references: [id], onDelete: Restrict)
-  project          FinanceProject?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  bankTransaction  BankTransaction?   @relation("PurchaseBillBankTransaction", fields: [bankTransactionId], references: [id], onDelete: SetNull)
-  transactionSplit TransactionSplit?  @relation("PurchaseBillSplitTransaction", fields: [transactionSplitId], references: [id], onDelete: SetNull)
+  vendor           Vendor            @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  project          FinanceProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  bankTransaction  BankTransaction?  @relation("PurchaseBillBankTransaction", fields: [bankTransactionId], references: [id], onDelete: SetNull)
+  transactionSplit TransactionSplit? @relation("PurchaseBillSplitTransaction", fields: [transactionSplitId], references: [id], onDelete: SetNull)
 
   @@map("finance_purchase_bills")
 }
 
 model SalesBill {
-  id           String   @id @default(cuid())
-  clientId     String
-  projectId    String?
-  gstNumber    String?
-  invoiceNo    String
-  baseAmount   Float
-  gstAmount    Float
-  totalAmount  Float
-  fileUrl      String?
-  bankTransactionId String? @unique @map("bank_transaction_id")
-  transactionSplitId String? @unique @map("transaction_split_id")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  clientId           String
+  projectId          String?
+  gstNumber          String?
+  invoiceNo          String
+  baseAmount         Float
+  gstAmount          Float
+  totalAmount        Float
+  fileUrl            String?
+  bankTransactionId  String?  @unique @map("bank_transaction_id")
+  transactionSplitId String?  @unique @map("transaction_split_id")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  client           FinanceClient      @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  project          FinanceProject?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  bankTransaction  BankTransaction?   @relation("SalesBillBankTransaction", fields: [bankTransactionId], references: [id], onDelete: SetNull)
-  transactionSplit TransactionSplit?  @relation("SalesBillSplitTransaction", fields: [transactionSplitId], references: [id], onDelete: SetNull)
+  client           FinanceClient     @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  project          FinanceProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  bankTransaction  BankTransaction?  @relation("SalesBillBankTransaction", fields: [bankTransactionId], references: [id], onDelete: SetNull)
+  transactionSplit TransactionSplit? @relation("SalesBillSplitTransaction", fields: [transactionSplitId], references: [id], onDelete: SetNull)
 
   @@map("finance_sales_bills")
 }
@@ -823,14 +848,14 @@ model FinanceInvoiceSequence {
   mainKind   InvoiceMainKind @id @map("main_kind")
   prefix     String          @default("")
   lastNumber Int             @default(0) @map("last_number")
-  updatedAt  DateTime       @updatedAt
+  updatedAt  DateTime        @updatedAt
 
   @@map("finance_invoice_sequences")
 }
 
 model Invoice {
   id              String          @id @default(cuid())
-  mainKind        InvoiceMainKind   @map("main_kind")
+  mainKind        InvoiceMainKind @map("main_kind")
   subtype         InvoiceSubtype
   clientId        String
   quotationId     String?
@@ -845,10 +870,10 @@ model Invoice {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  client          FinanceClient    @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  template        InvoiceTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  convertedFrom   Invoice?         @relation("InvoiceConversion", fields: [convertedFromId], references: [id], onDelete: SetNull)
-  convertedTo     Invoice[]        @relation("InvoiceConversion")
+  client        FinanceClient    @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  template      InvoiceTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  convertedFrom Invoice?         @relation("InvoiceConversion", fields: [convertedFromId], references: [id], onDelete: SetNull)
+  convertedTo   Invoice[]        @relation("InvoiceConversion")
 
   @@map("finance_invoices")
 }
@@ -859,12 +884,12 @@ enum ProductType {
 }
 
 model FinanceProduct {
-  id       String      @id @default(cuid())
-  name     String
-  hsn      String?
-  type     ProductType @default(SPGS)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String      @id @default(cuid())
+  name      String
+  hsn       String?
+  type      ProductType @default(SPGS)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   stockMovements StockMovement[]
 
@@ -872,41 +897,41 @@ model FinanceProduct {
 }
 
 model StockMovement {
-  id         String   @id @default(cuid())
-  productId  String
-  projectId  String?
-  siteId     String?
-  quantity   Float    // + for purchase, - for usage
-  unitPrice  Float?
-  type       String   // PURCHASE | USAGE
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  productId String
+  projectId String?
+  siteId    String?
+  quantity  Float // + for purchase, - for usage
+  unitPrice Float?
+  type      String // PURCHASE | USAGE
+  createdAt DateTime @default(now())
 
-  product  FinanceProduct  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  project  FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  product FinanceProduct  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  project FinanceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@map("finance_stock_movements")
 }
 
 model CashVoucher {
-  id           String   @id @default(cuid())
-  amount       Float
-  description  String?
-  category     String?
+  id            String   @id @default(cuid())
+  amount        Float
+  description   String?
+  category      String?
   paymentSource String?
-  billUrl      String?
-  createdAt    DateTime @default(now())
+  billUrl       String?
+  createdAt     DateTime @default(now())
 
   @@map("finance_cash_vouchers")
 }
 
 model CashflowSnapshot {
-  id              String   @id @default(cuid())
-  date            DateTime
-  openingBalance  Float
-  inflows         Float
-  outflows        Float
-  closingBalance  Float
-  createdAt       DateTime @default(now())
+  id             String   @id @default(cuid())
+  date           DateTime
+  openingBalance Float
+  inflows        Float
+  outflows       Float
+  closingBalance Float
+  createdAt      DateTime @default(now())
 
   @@map("finance_cashflow_snapshots")
 }
@@ -959,17 +984,17 @@ enum WorkflowStatus {
 }
 
 model AttendancePolicy {
-  id                   String   @id @default(cuid())
+  id                String   @id @default(cuid())
   // null = global policy; set = per-employee override
-  userId               String?  @unique
-  workStartTime        String   @default("09:30") // HH:mm
-  workEndTime          String   @default("18:30") // HH:mm
-  graceMinutes         Int      @default(15)
-  lateAfterMinutes     Int      @default(30)
-  sundayCompOffAuto    Boolean  @default(true)
-  effectiveFrom        DateTime @default(now())
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  userId            String?  @unique
+  workStartTime     String   @default("09:30") // HH:mm
+  workEndTime       String   @default("18:30") // HH:mm
+  graceMinutes      Int      @default(15)
+  lateAfterMinutes  Int      @default(30)
+  sundayCompOffAuto Boolean  @default(true)
+  effectiveFrom     DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -979,7 +1004,7 @@ model AttendancePolicy {
 model AttendanceDay {
   id           String           @id @default(cuid())
   userId       String
-  date         String           // YYYY-MM-DD local date
+  date         String // YYYY-MM-DD local date
   status       AttendanceStatus @default(NONE)
   isLate       Boolean          @default(false)
   lateMinutes  Int              @default(0)
@@ -990,7 +1015,7 @@ model AttendanceDay {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   checkIn     AttendanceCheckIn?
   checkOut    AttendanceCheckOut?
   corrections AttendanceCorrection[]
@@ -1003,20 +1028,20 @@ model AttendanceDay {
 }
 
 model AttendanceCheckIn {
-  id               String   @id @default(cuid())
-  attendanceDayId  String   @unique
+  id               String    @id @default(cuid())
+  attendanceDayId  String    @unique
   capturedAt       DateTime // server UTC
   clientCapturedAt DateTime?
-  selfieKey        String   // storage key (local disk or S3)
-  selfieHash       String?  // SHA-256 for dedup
+  selfieKey        String // storage key (local disk or S3)
+  selfieHash       String? // SHA-256 for dedup
   lat              Float?
   lng              Float?
   accuracyM        Float?
   description      String
-  workLocation     String?  // OFFICE | ON_FIELD
+  workLocation     String? // OFFICE | ON_FIELD
   deviceInfo       String?
-  syncBatchId      String?  // for offline sync
-  createdAt        DateTime @default(now())
+  syncBatchId      String? // for offline sync
+  createdAt        DateTime  @default(now())
 
   attendanceDay AttendanceDay @relation(fields: [attendanceDayId], references: [id], onDelete: Cascade)
 
@@ -1024,20 +1049,20 @@ model AttendanceCheckIn {
 }
 
 model AttendanceCheckOut {
-  id               String   @id @default(cuid())
-  attendanceDayId  String   @unique
+  id               String    @id @default(cuid())
+  attendanceDayId  String    @unique
   capturedAt       DateTime
   clientCapturedAt DateTime?
   selfieKey        String?
   lat              Float?
   lng              Float?
   accuracyM        Float?
-  description      String   // short description at checkout (mandatory)
-  workLocation     String?  // OFFICE | ON_FIELD
-  fullDayUpdate    String?  // detailed update — filled via daily log (optional)
-  nextDayPlan      String?  // tomorrow's plan — filled via daily log (optional)
+  description      String // short description at checkout (mandatory)
+  workLocation     String? // OFFICE | ON_FIELD
+  fullDayUpdate    String? // detailed update — filled via daily log (optional)
+  nextDayPlan      String? // tomorrow's plan — filled via daily log (optional)
   syncBatchId      String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
 
   attendanceDay AttendanceDay @relation(fields: [attendanceDayId], references: [id], onDelete: Cascade)
 
@@ -1062,19 +1087,19 @@ model AttendanceCorrection {
 }
 
 model LeaveRequest {
-  id                   String      @id @default(cuid())
-  userId               String
-  startDate            String      // YYYY-MM-DD
-  endDate              String      // YYYY-MM-DD
-  type                 LeaveType
-  reason               String
-  status               LeaveStatus @default(PENDING)
-  approverId           String?
-  decidedAt            DateTime?
+  id                     String      @id @default(cuid())
+  userId                 String
+  startDate              String // YYYY-MM-DD
+  endDate                String // YYYY-MM-DD
+  type                   LeaveType
+  reason                 String
+  status                 LeaveStatus @default(PENDING)
+  approverId             String?
+  decidedAt              DateTime?
   emergencyJustification String?
-  advanceDaysSatisfied Boolean     @default(false)
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
+  advanceDaysSatisfied   Boolean     @default(false)
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
 
   user     User  @relation("LeaveRequestUser", fields: [userId], references: [id], onDelete: Cascade)
   approver User? @relation("LeaveRequestApprover", fields: [approverId], references: [id])
@@ -1086,7 +1111,7 @@ model LeaveRequest {
 model CompOffRequest {
   id              String        @id @default(cuid())
   userId          String
-  workDate        String        // YYYY-MM-DD (Sunday or extra day)
+  workDate        String // YYYY-MM-DD (Sunday or extra day)
   attendanceDayId String?       @unique
   status          CompOffStatus @default(PENDING)
   approverId      String?
@@ -1122,12 +1147,12 @@ model WorkflowRequest {
 }
 
 model WorkflowApproval {
-  id         String    @id @default(cuid())
+  id         String   @id @default(cuid())
   requestId  String
   approverId String
-  decision   String    // APPROVED | REJECTED | COMMENT
+  decision   String // APPROVED | REJECTED | COMMENT
   comment    String?
-  decidedAt  DateTime  @default(now())
+  decidedAt  DateTime @default(now())
 
   request  WorkflowRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   approver User            @relation("WorkflowApprover", fields: [approverId], references: [id])
@@ -1136,13 +1161,13 @@ model WorkflowApproval {
 }
 
 model AttendanceNotification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  type      String   // CHECKIN_REMINDER | LATE | CHECKOUT_REMINDER | MISSING | LEAVE_DECIDED | COMPOFF_DECIDED | WORKFLOW_UPDATE
+  type      String // CHECKIN_REMINDER | LATE | CHECKOUT_REMINDER | MISSING | LEAVE_DECIDED | COMPOFF_DECIDED | WORKFLOW_UPDATE
   title     String
   message   String
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation("AttNotifUser", fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1194,19 +1219,19 @@ model CrmLead {
   stage        CrmStage     @default(NEW)
   score        Int          @default(0)
   assignedToId String?
-  customerId   String?      // link to existing Customer once converted
+  customerId   String? // link to existing Customer once converted
   metadata     Json         @default("{}")
   notes        String?
   city         String?
   state        String?
-  systemKw     Float?       // desired system size
+  systemKw     Float? // desired system size
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  assignedTo   User?           @relation("CrmLeadAssignee", fields: [assignedToId], references: [id])
-  events       CrmLeadEvent[]
-  score_record CrmLeadScore?
-  conversations CrmConversation[]
+  assignedTo          User?                @relation("CrmLeadAssignee", fields: [assignedToId], references: [id])
+  events              CrmLeadEvent[]
+  score_record        CrmLeadScore?
+  conversations       CrmConversation[]
   campaignEnrollments CampaignEnrollment[]
 
   @@index([stage])
@@ -1217,16 +1242,16 @@ model CrmLead {
 }
 
 model CrmLeadEvent {
-  id          String   @id @default(cuid())
-  leadId      String
-  eventType   String   // LEAD_CREATED | STAGE_CHANGED | MESSAGE_SENT | SCORE_UPDATED | NOTE_ADDED | etc.
-  fromStage   String?
-  toStage     String?
-  actor       String   // user_id | 'system' | 'automation:{rule_id}'
-  payload     Json     @default("{}")
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  leadId    String
+  eventType String // LEAD_CREATED | STAGE_CHANGED | MESSAGE_SENT | SCORE_UPDATED | NOTE_ADDED | etc.
+  fromStage String?
+  toStage   String?
+  actor     String // user_id | 'system' | 'automation:{rule_id}'
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now())
 
-  lead        CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@index([leadId, createdAt(sort: Desc)])
   @@index([eventType, createdAt(sort: Desc)])
@@ -1241,7 +1266,7 @@ model CrmLeadScore {
   fitScore        Int      @default(0)
   calculatedAt    DateTime @default(now())
 
-  lead            CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead CrmLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@map("crm_lead_scores")
 }
@@ -1253,32 +1278,32 @@ model AutomationRule {
   name        String
   description String?
   isActive    Boolean  @default(true)
-  trigger     Json     // { "event": "lead.stage_changed", "filter": { "toStage": "CONTACTED" } }
+  trigger     Json // { "event": "lead.stage_changed", "filter": { "toStage": "CONTACTED" } }
   conditions  Json     @default("[]") // [{ "field": "lead.score", "op": "gte", "value": 50 }]
-  actions     Json     // [{ "type": "send_whatsapp", "templateId": "...", "delayMinutes": 0 }]
-  loopGuard   Int      @default(1)  // max executions per lead per 24h
-  priority    Int      @default(0)  // lower = runs first
+  actions     Json // [{ "type": "send_whatsapp", "templateId": "...", "delayMinutes": 0 }]
+  loopGuard   Int      @default(1) // max executions per lead per 24h
+  priority    Int      @default(0) // lower = runs first
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  executions  AutomationExecution[]
+  executions AutomationExecution[]
 
   @@map("automation_rules")
 }
 
 model AutomationExecution {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   ruleId         String
   leadId         String
   triggerEventId String
-  status         String   @default("PENDING") // PENDING | RUNNING | DONE | FAILED | SKIPPED
-  attempts       Int      @default(0)
-  result         Json     @default("{}")
+  status         String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED | SKIPPED
+  attempts       Int       @default(0)
+  result         Json      @default("{}")
   startedAt      DateTime?
   completedAt    DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
-  rule           AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
   @@unique([ruleId, leadId, triggerEventId]) // idempotency key
   @@index([leadId])
@@ -1289,17 +1314,17 @@ model AutomationExecution {
 // ── Phase 3: Multilingual Templates ─────────────────────────────────────────
 
 model MessageTemplate {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  category    String   // welcome | follow_up | proposal | payment_reminder | qualification
-  channel     String   // whatsapp | email | sms | voice
-  contentEn   String
-  contentHi   String?
-  contentMr   String?
-  variables   String[] @default([]) // ['name', 'kw_size', 'price']
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String   @unique
+  category  String // welcome | follow_up | proposal | payment_reminder | qualification
+  channel   String // whatsapp | email | sms | voice
+  contentEn String
+  contentHi String?
+  contentMr String?
+  variables String[] @default([]) // ['name', 'kw_size', 'price']
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([category, channel])
   @@map("message_templates")
@@ -1308,17 +1333,17 @@ model MessageTemplate {
 // ── Phase 4: Communication Engine ────────────────────────────────────────────
 
 model CrmConversation {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   leadId        String
-  channel       String   // whatsapp | email | sms
+  channel       String // whatsapp | email | sms
   lastMessageAt DateTime?
-  context       Json     @default("[]")  // last 20 messages for AI context
-  intent        String?  // current detected intent
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  context       Json      @default("[]") // last 20 messages for AI context
+  intent        String? // current detected intent
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  lead          CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  messages      CrmMessage[]
+  lead     CrmLead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  messages CrmMessage[]
 
   @@unique([leadId, channel])
   @@map("crm_conversations")
@@ -1327,16 +1352,16 @@ model CrmConversation {
 model CrmMessage {
   id             String   @id @default(cuid())
   conversationId String
-  direction      String   // INBOUND | OUTBOUND
+  direction      String // INBOUND | OUTBOUND
   channel        String
   content        String
   language       String   @default("en")
   status         String   @default("SENT") // SENT | DELIVERED | READ | FAILED
-  externalId     String?  // WhatsApp message ID / email ID
+  externalId     String? // WhatsApp message ID / email ID
   metadata       Json     @default("{}")
   sentAt         DateTime @default(now())
 
-  conversation   CrmConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation CrmConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, sentAt(sort: Desc)])
   @@map("crm_messages")
@@ -1345,16 +1370,16 @@ model CrmMessage {
 // ── Phase 5: Sheet Ingestion ──────────────────────────────────────────────────
 
 model SheetImport {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   filename    String
-  totalRows   Int      @default(0)
-  imported    Int      @default(0)
-  duplicates  Int      @default(0)
-  failed      Int      @default(0)
-  status      String   @default("PENDING") // PENDING | PROCESSING | DONE | FAILED
-  errorReport Json     @default("[]")
+  totalRows   Int       @default(0)
+  imported    Int       @default(0)
+  duplicates  Int       @default(0)
+  failed      Int       @default(0)
+  status      String    @default("PENDING") // PENDING | PROCESSING | DONE | FAILED
+  errorReport Json      @default("[]")
   importedBy  String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   completedAt DateTime?
 
   @@map("sheet_imports")
@@ -1382,7 +1407,7 @@ model Campaign {
   name         String
   type         CampaignType
   status       CampaignStatus @default(DRAFT)
-  channel      String         // whatsapp | email | sms
+  channel      String // whatsapp | email | sms
   targetFilter Json           @default("{}") // { "stage": "PROPOSAL_SENT", "score_gte": 40 }
   templateId   String?
   scheduledAt  DateTime?
@@ -1393,41 +1418,41 @@ model Campaign {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  steps        DripStep[]
-  enrollments  CampaignEnrollment[]
+  steps       DripStep[]
+  enrollments CampaignEnrollment[]
 
   @@index([status, scheduledAt])
   @@map("campaigns")
 }
 
 model DripStep {
-  id          String   @id @default(cuid())
-  campaignId  String
-  stepNumber  Int
-  delayDays   Int
-  templateId  String
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  campaignId String
+  stepNumber Int
+  delayDays  Int
+  templateId String
+  createdAt  DateTime @default(now())
 
-  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, stepNumber])
   @@map("drip_steps")
 }
 
 model CampaignEnrollment {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   campaignId  String
   leadId      String
-  currentStep Int      @default(0)
+  currentStep Int       @default(0)
   nextSendAt  DateTime?
-  status      String   @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED | UNSUBSCRIBED | STOPPED
+  status      String    @default("ACTIVE") // ACTIVE | PAUSED | COMPLETED | UNSUBSCRIBED | STOPPED
   stoppedAt   DateTime?
   stopReason  String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  lead        CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead     CrmLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, leadId])
   @@index([status, nextSendAt])
@@ -1439,8 +1464,8 @@ model CampaignEnrollment {
 model AnalyticsSnapshot {
   id        String   @id @default(cuid())
   date      DateTime // truncated to date
-  metric    String   // leads_created | stage_conversions | messages_sent | campaign_sent
-  dimension String?  // source | stage | channel | rep_id | campaign_id
+  metric    String // leads_created | stage_conversions | messages_sent | campaign_sent
+  dimension String? // source | stage | channel | rep_id | campaign_id
   value     Int      @default(0)
   createdAt DateTime @default(now())
 
@@ -1476,30 +1501,30 @@ enum SocialPostStatus {
 }
 
 model SocialPost {
-  id            String            @id @default(cuid())
-  title         String
-  segment       SocialSegment
-  contentType   SocialContentType
-  status        SocialPostStatus  @default(DRAFT)
-  captionEn     String
-  captionHi     String
-  captionMr     String
-  hashtags      String[]
-  visualConcept String
-  mediaUrl      String?
-  platforms     String[]          @default(["instagram", "facebook"])
-  scheduledAt   DateTime?
-  postedAt      DateTime?
-  isNewsSlot      Boolean           @default(false)
-  rejectionNote   String?
-  productionSpec  Json?
-  currentVersion  Int               @default(1)
-  slotId          String?           @unique
-  slot            SocialCalendarSlot? @relation(fields: [slotId], references: [id])
-  analytics       SocialPostAnalytics?
-  versions        SocialPostVersion[]
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id             String               @id @default(cuid())
+  title          String
+  segment        SocialSegment
+  contentType    SocialContentType
+  status         SocialPostStatus     @default(DRAFT)
+  captionEn      String
+  captionHi      String
+  captionMr      String
+  hashtags       String[]
+  visualConcept  String
+  mediaUrl       String?
+  platforms      String[]             @default(["instagram", "facebook"])
+  scheduledAt    DateTime?
+  postedAt       DateTime?
+  isNewsSlot     Boolean              @default(false)
+  rejectionNote  String?
+  productionSpec Json?
+  currentVersion Int                  @default(1)
+  slotId         String?              @unique
+  slot           SocialCalendarSlot?  @relation(fields: [slotId], references: [id])
+  analytics      SocialPostAnalytics?
+  versions       SocialPostVersion[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   @@index([status, scheduledAt])
   @@index([segment, contentType])
@@ -1511,7 +1536,7 @@ model SocialPostVersion {
   postId     String
   post       SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   version    Int
-  label      String     // "AI Generated" | "User Edit" | "Final Approved" | "Rejected"
+  label      String // "AI Generated" | "User Edit" | "Final Approved" | "Rejected"
   snapshot   Json
   editedBy   String?
   changeNote String?
@@ -1523,14 +1548,14 @@ model SocialPostVersion {
 }
 
 model SocialCalendarSlot {
-  id         String    @id @default(cuid())
+  id         String      @id @default(cuid())
   date       DateTime
-  slotType   String    // PLANNED | NEWS_SLOT | FESTIVAL | SEASONAL
+  slotType   String // PLANNED | NEWS_SLOT | FESTIVAL | SEASONAL
   theme      String
   segment    String?
-  isNewsSlot Boolean   @default(false)
+  isNewsSlot Boolean     @default(false)
   post       SocialPost?
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime    @default(now())
 
   @@index([date])
   @@map("social_calendar_slots")
@@ -1538,7 +1563,7 @@ model SocialCalendarSlot {
 
 model SocialPlatformCredential {
   id           String    @id @default(cuid())
-  platform     String    // instagram | linkedin | facebook
+  platform     String // instagram | linkedin | facebook
   displayName  String
   accessToken  String
   refreshToken String?
@@ -1565,4 +1590,75 @@ model SocialPostAnalytics {
   fetchedAt DateTime   @default(now())
 
   @@map("social_post_analytics")
+}
+
+// ─── C&I website leads (public website → quotation app) ─────────────────────
+
+enum WebsiteLeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  SITE_VISIT
+  QUOTATION
+  NEGOTIATION
+  WON
+  LOST
+}
+
+model WebsiteLead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name         String
+  companyName  String
+  phone        String
+  email        String
+  industry     String?
+  location     String?
+  message      String?
+
+  requirementType String
+  solarCapacity   Float?
+  bessCapacity    Float?
+
+  monthlyElectricityBill Float?
+  monthlyUnits           Float?
+  connectedLoad          Float?
+  maximumDemand          Float?
+  contractDemand         Float?
+  backupRequirement      String?
+  operatingHours         Float?
+
+  solarCalculatorResults Json?
+  bessCalculatorResults  Json?
+
+  sourcePage String?
+  sourceType String?
+
+  status         WebsiteLeadStatus @default(NEW)
+  assignedToId   String?
+  notes          String?
+  quotationId    String?
+  lastContactedAt DateTime?
+  nextFollowUp    DateTime?
+
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+  landingPage String?
+  referrer    String?
+
+  assignedTo User?      @relation("WebsiteLeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  quotation  Quotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([sourceType])
+  @@index([createdAt])
+  @@index([email])
+  @@index([phone])
+  @@map("website_leads")
 }

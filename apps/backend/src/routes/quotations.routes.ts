@@ -376,6 +376,7 @@ router.post(
         panelWarrantyYears,
         warrantyItems,
         bomItems,
+        bomOptions,
         paymentMilestones,
         paymentModes,
         paymentTermsBullets,
@@ -608,7 +609,11 @@ router.post(
       });
       if (qWithResult?.result) {
         const { buildQuickQuoteDisplayConfig } = await import('../services/quick-quote-config.service.js');
-        const { parseBomItemsFromBody, serializeBomItemsForStorage } = await import('../services/bom-items.service.js');
+        const {
+          parseBomItemsFromBody,
+          parseQuotationBomOptionsFromBody,
+          serializeBomItemsForStorage,
+        } = await import('../services/bom-items.service.js');
         const { parseWarrantyItemsFromBody, serializeWarrantyItemsForStorage } = await import('../services/warranty-items.service.js');
         const br = (qWithResult.result.breakdown as Record<string, unknown>) ?? {};
         const inputs = (br.inputs as Record<string, unknown>) ?? {};
@@ -640,7 +645,10 @@ router.post(
                 ...(warrantyItemsStored?.length ? { warrantyItems: warrantyItemsStored } : {}),
               }
             : undefined;
-        const parsedBomItems = parseBomItemsFromBody(bomItems);
+        const parsedBomOptions = parseQuotationBomOptionsFromBody(bomOptions);
+        const parsedBomItems = parseBomItemsFromBody(
+          parsedBomOptions?.[0]?.items ?? bomItems,
+        );
         const bomItemsStored = parsedBomItems?.length
           ? serializeBomItemsForStorage(parsedBomItems)
           : undefined;
@@ -672,6 +680,7 @@ router.post(
               combinedSystems: combinedSystemsCalc?.systems,
               combinedSummary: combinedSystemsCalc?.combined,
               costingOptions: costingOptionsCalc ?? undefined,
+              bomOptions: parsedBomOptions,
               formData: {
                 pricePerWatt,
                 electricityRatePerUnit: parseFloat(electricityRatePerUnit),

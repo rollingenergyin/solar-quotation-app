@@ -64,6 +64,44 @@ export async function runStartupSchemaFix() {
       ADD COLUMN IF NOT EXISTS "bomOptions" JSONB;
   `);
 
+  await exec(`
+    CREATE TABLE IF NOT EXISTS "bom_templates" (
+      "id" TEXT NOT NULL,
+      "name" TEXT NOT NULL,
+      "description" TEXT,
+      "title" TEXT NOT NULL,
+      "items" JSONB NOT NULL,
+      "isActive" BOOLEAN NOT NULL DEFAULT true,
+      "isDefault" BOOLEAN NOT NULL DEFAULT false,
+      "isDeleted" BOOLEAN NOT NULL DEFAULT false,
+      "displayOrder" INTEGER NOT NULL DEFAULT 0,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdById" TEXT,
+      CONSTRAINT "bom_templates_pkey" PRIMARY KEY ("id")
+    );
+  `);
+  await exec(`
+    ALTER TABLE "bom_templates"
+      ADD COLUMN IF NOT EXISTS "description" TEXT,
+      ADD COLUMN IF NOT EXISTS "isDefault" BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS "isDeleted" BOOLEAN NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS "displayOrder" INTEGER NOT NULL DEFAULT 0;
+  `);
+  await exec(`
+    CREATE INDEX IF NOT EXISTS "bom_templates_isDeleted_isActive_displayOrder_idx"
+      ON "bom_templates"("isDeleted", "isActive", "displayOrder");
+  `);
+  await exec(`
+    DO $$ BEGIN
+      ALTER TABLE "bom_templates"
+        ADD CONSTRAINT "bom_templates_createdById_fkey"
+        FOREIGN KEY ("createdById") REFERENCES "users"("id")
+        ON DELETE SET NULL ON UPDATE CASCADE;
+    EXCEPTION WHEN duplicate_object THEN NULL;
+    END $$;
+  `);
+
   // ── Quotation global settings (process timeline singleton) ───────────────
   await exec(`
     CREATE TABLE IF NOT EXISTS "quotation_global_settings" (
@@ -499,6 +537,58 @@ export async function runStartupSchemaFix() {
   `);
   await exec(`CREATE UNIQUE INDEX IF NOT EXISTS "social_post_versions_postId_version_key" ON "social_post_versions"("postId","version");`);
   await exec(`CREATE INDEX IF NOT EXISTS "social_post_versions_postId_idx" ON "social_post_versions"("postId");`);
+
+  await createEnum('WebsiteLeadStatus', [
+    'NEW', 'CONTACTED', 'QUALIFIED', 'SITE_VISIT', 'QUOTATION', 'NEGOTIATION', 'WON', 'LOST',
+  ]);
+  await exec(`
+    CREATE TABLE IF NOT EXISTS "website_leads" (
+      "id" TEXT NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "name" TEXT NOT NULL,
+      "companyName" TEXT NOT NULL,
+      "phone" TEXT NOT NULL,
+      "email" TEXT NOT NULL,
+      "industry" TEXT,
+      "location" TEXT,
+      "message" TEXT,
+      "requirementType" TEXT NOT NULL,
+      "solarCapacity" DOUBLE PRECISION,
+      "bessCapacity" DOUBLE PRECISION,
+      "monthlyElectricityBill" DOUBLE PRECISION,
+      "monthlyUnits" DOUBLE PRECISION,
+      "connectedLoad" DOUBLE PRECISION,
+      "maximumDemand" DOUBLE PRECISION,
+      "contractDemand" DOUBLE PRECISION,
+      "backupRequirement" TEXT,
+      "operatingHours" DOUBLE PRECISION,
+      "solarCalculatorResults" JSONB,
+      "bessCalculatorResults" JSONB,
+      "sourcePage" TEXT,
+      "sourceType" TEXT,
+      "status" "WebsiteLeadStatus" NOT NULL DEFAULT 'NEW',
+      "assignedToId" TEXT,
+      "notes" TEXT,
+      "quotationId" TEXT,
+      "lastContactedAt" TIMESTAMP(3),
+      "nextFollowUp" TIMESTAMP(3),
+      "utmSource" TEXT,
+      "utmMedium" TEXT,
+      "utmCampaign" TEXT,
+      "utmTerm" TEXT,
+      "utmContent" TEXT,
+      "landingPage" TEXT,
+      "referrer" TEXT,
+      CONSTRAINT "website_leads_pkey" PRIMARY KEY ("id")
+    );
+  `);
+  await exec(`CREATE INDEX IF NOT EXISTS "website_leads_status_idx" ON "website_leads"("status");`);
+  await exec(`CREATE INDEX IF NOT EXISTS "website_leads_assignedToId_idx" ON "website_leads"("assignedToId");`);
+  await exec(`CREATE INDEX IF NOT EXISTS "website_leads_sourceType_idx" ON "website_leads"("sourceType");`);
+  await exec(`CREATE INDEX IF NOT EXISTS "website_leads_createdAt_idx" ON "website_leads"("createdAt");`);
+  await exec(`CREATE INDEX IF NOT EXISTS "website_leads_email_idx" ON "website_leads"("email");`);
+  await exec(`CREATE INDEX IF NOT EXISTS "website_leads_phone_idx" ON "website_leads"("phone");`);
 
   await prisma.$disconnect();
 }

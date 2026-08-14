@@ -232,6 +232,12 @@ export async function getQuotationTemplateData(quotationId: string): Promise<Quo
     });
   }
 
+  const { parseQuotationBomOptionsFromJson } = await import('./bom-items.service.js');
+  const bomOptions = parseQuotationBomOptionsFromJson(q.quotationDataJson);
+  if (bomOptions?.length) {
+    Object.assign(enriched, { bomOptions });
+  }
+
   const { applyGlobalProcessTimelineToPayload } = await import('./process-timeline.service.js');
   const finalized = await applyGlobalProcessTimelineToPayload(prisma, enriched);
 

@@ -20,6 +20,8 @@ import messageTemplatesRoutes from './message-templates.routes.js';
 import campaignsRoutes from './campaigns.routes.js';
 import socialRoutes from './social.routes.js';
 import siteCostingRoutes from './site-costing.routes.js';
+import websiteLeadsRoutes, { createPublicWebsiteLead } from './website-leads.routes.js';
+import { publicLeadGuard } from '../middleware/publicLeadGuard.js';
 
 const router = Router();
 
@@ -44,6 +46,8 @@ router.use('/automation', automationRoutes);
 router.use('/crm-templates', messageTemplatesRoutes);
 router.use('/campaigns', campaignsRoutes);
 router.use('/social', socialRoutes);
+router.use('/website-leads', websiteLeadsRoutes);
+router.post('/public/leads', publicLeadGuard, createPublicWebsiteLead);
 
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

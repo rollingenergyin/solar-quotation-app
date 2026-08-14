@@ -109,7 +109,7 @@ export default function SiteCostBreakdownPage({
           <div className="rounded-lg px-3 py-2 text-xs" style={{ background: '#f0f4ff', border: '1px solid rgba(102,144,204,0.25)' }}>
             <p className="font-semibold mb-1" style={{ color: '#161c34' }}>Why Solar vs Grid?</p>
             <ul className="space-y-0.5 text-gray-600 list-disc pl-4">
-              <li>25-year generation with near-zero running cost</li>
+              <li>30-year generation with near-zero running cost</li>
               <li>Protection from rising electricity tariffs</li>
               <li>PM Surya Ghar subsidy where applicable</li>
               <li>Increased property value & sustainability</li>

@@ -19,7 +19,7 @@ interface Props {
 
 const DEFAULT_BODY = [
   'We are delighted to present this detailed proposal for the installation of a {{system_size}} kW Grid-Connected Rooftop Solar Power System at your premises. At Rolling Energy, we specialize in delivering turnkey solar solutions that combine cutting-edge technology, premium materials, and expert engineering to maximize your return on investment.',
-  'This proposal has been prepared after careful consideration of your energy consumption patterns, roof space availability, and local grid conditions. The system outlined herein is designed to significantly reduce your electricity bills, contribute to a cleaner environment, and deliver a strong financial return over its 25-year operational life.',
+  'This proposal has been prepared after careful consideration of your energy consumption patterns, roof space availability, and local grid conditions. The system outlined herein is designed to significantly reduce your electricity bills, contribute to a cleaner environment, and deliver a strong financial return over its 30-year operational life.',
   'The proposal includes a complete Bill of Materials, detailed cost breakdown, government subsidy calculations under the PM Surya Ghar Muft Bijli Yojana scheme, and a comprehensive ROI analysis with EMI financing options tailored to your needs.',
   'We invite you to review this proposal and welcome any queries or clarifications you may have. Our technical team is available for a detailed walkthrough at your convenience.',
   'We look forward to partnering with you on your journey towards energy independence and sustainable savings.',

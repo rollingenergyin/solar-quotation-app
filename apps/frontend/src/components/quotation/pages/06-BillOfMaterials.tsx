@@ -1,7 +1,12 @@
 import QuotationHeader from '../QuotationHeader';
 import QuotationFooter from '../QuotationFooter';
 import ProposalNoteBlock from '../ProposalNoteBlock';
-import type { QuotationMaterial, TemplateConfig, TemplateBomItem } from '../../../types/quotation-template';
+import type {
+  QuotationBomOption,
+  QuotationMaterial,
+  TemplateConfig,
+  TemplateBomItem,
+} from '../../../types/quotation-template';
 import { bomItemHasAlternatives } from '@/constants/bom-items';
 import type { ProposalNote } from '@/constants/proposal-note';
 
@@ -10,6 +15,7 @@ interface Props {
   systemSizeKw: number;
   inverterSizeKw: number;
   materials: QuotationMaterial[];
+  bomOptions?: QuotationBomOption[];
   config?: TemplateConfig | null;
   panelWattageWp?: number;
   numModules?: number;
@@ -111,11 +117,13 @@ function BomTable({
   showQty,
   showUnit,
   invKw,
+  compact = false,
 }: {
   bom: TemplateBomItem[];
   showQty: boolean;
   showUnit: boolean;
   invKw: number;
+  compact?: boolean;
 }) {
   const rows = bom.map(item => ({
     ...item,
@@ -143,8 +151,9 @@ function BomTable({
           background: '#161c34',
           color: '#ffffff',
           gridTemplateColumns: gridCols,
-          padding: '10px 16px',
+          padding: compact ? '5px 12px' : '10px 16px',
           fontFamily: 'Poppins, sans-serif',
+          fontSize: compact ? '9.5px' : undefined,
         }}
       >
         <div>Sr.</div>
@@ -168,12 +177,12 @@ function BomTable({
         return (
           <div
             key={`${item.srNo}-${idx}`}
-            className="grid items-start py-2 px-4"
+            className={`grid items-start ${compact ? 'py-1 px-3' : 'py-2 px-4'}`}
             style={{
               gridTemplateColumns: gridCols,
               background: idx % 2 === 0 ? '#ffffff' : '#f9fafb',
               borderBottom: '1px solid #f3f4f6',
-              fontSize: '11px',
+              fontSize: compact ? '9.5px' : '11px',
             }}
           >
             <div className="text-gray-400 font-medium pt-0.5">{item.srNo}</div>
@@ -199,19 +208,19 @@ function BomTable({
 
 export default function BillOfMaterials({
   quoteNumber, systemSizeKw, inverterSizeKw, materials,
-  config, panelWattageWp, numModules, structureType, meterPhase, supplementaryCosts,
+  bomOptions, config, panelWattageWp, numModules, structureType, meterPhase, supplementaryCosts,
   pageNumber = 6, totalPages = 13, proposalNote,
 }: Props) {
   const showQty = config?.bomShowQty ?? false;
   const showUnit = config?.bomShowUnit ?? false;
   const invKw = closestInverterKw(inverterSizeKw);
 
-  let bom: TemplateBomItem[];
+  let fallbackBom: TemplateBomItem[];
 
   if (config?.bomItems?.length) {
-    bom = config.bomItems;
+    fallbackBom = config.bomItems;
   } else if (materials.length > 0) {
-    bom = materials.map(m => ({
+    fallbackBom = materials.map(m => ({
       srNo: m.srNo,
       name: m.name,
       specification: m.specification,
@@ -220,7 +229,7 @@ export default function BillOfMaterials({
       unit: m.unit,
     }));
   } else {
-    bom = defaultBOM(
+    fallbackBom = defaultBOM(
       systemSizeKw,
       inverterSizeKw,
       panelWattageWp ?? 575,
@@ -233,16 +242,31 @@ export default function BillOfMaterials({
     );
   }
 
-  const hasAlternatives = bom.some(bomItemHasAlternatives);
+  const resolvedOptions: QuotationBomOption[] = bomOptions?.length
+    ? bomOptions.slice(0, 2)
+    : [{
+        id: 'default',
+        templateId: 'default',
+        templateName: 'Default BOM',
+        title: '',
+        items: fallbackBom,
+      }];
+  const comparison = resolvedOptions.length > 1;
+  const hasAlternatives = resolvedOptions.some((option) =>
+    option.items.some(bomItemHasAlternatives),
+  );
 
   return (
     <div className="quotation-page flex flex-col" style={{ background: '#ffffff' }}>
       <QuotationHeader quoteNumber={quoteNumber} pageTitle="Bill of Materials" pageNumber={pageNumber} totalPages={totalPages} />
 
-      <div className="flex-1 px-12 py-6" style={{ paddingBottom: '36px' }}>
-        <div className="mb-5">
+      <div
+        className={`flex-1 px-12 ${comparison ? 'py-3' : 'py-6'}`}
+        style={{ paddingBottom: '36px' }}
+      >
+        <div className={comparison ? 'mb-2' : 'mb-5'}>
           <h2
-            className="text-2xl font-bold"
+            className={`${comparison ? 'text-xl' : 'text-2xl'} font-bold`}
             style={{ color: '#161c34', fontFamily: 'Poppins, sans-serif' }}
           >
             Equipment &amp; Materials List
@@ -250,11 +274,41 @@ export default function BillOfMaterials({
           <div className="mt-2 h-0.5 w-12" style={{ background: '#6690cc' }} />
         </div>
 
-        <BomTable bom={bom} showQty={showQty} showUnit={showUnit} invKw={invKw} />
+        {resolvedOptions.map((option, index) => (
+          <div key={option.id} className="quotation-no-break">
+            {index > 0 && (
+              <div className="flex items-center gap-3 my-1" aria-label="Alternative BOM">
+                <div className="h-px flex-1" style={{ background: 'linear-gradient(90deg, transparent, #6690cc)' }} />
+                <span
+                  className="rounded-full px-3 py-1 text-[9px] font-bold tracking-widest"
+                  style={{ color: '#ffffff', background: 'linear-gradient(135deg, #161c34, #6690cc)' }}
+                >
+                  OR
+                </span>
+                <div className="h-px flex-1" style={{ background: 'linear-gradient(90deg, #6690cc, transparent)' }} />
+              </div>
+            )}
+            {(comparison || option.title) && (
+              <p
+                className={`${comparison ? 'text-[11px] mb-1' : 'text-sm mb-2'} font-bold`}
+                style={{ color: '#161c34', fontFamily: 'Poppins, sans-serif' }}
+              >
+                {option.title || `BOM Option ${index + 1}`}
+              </p>
+            )}
+            <BomTable
+              bom={option.items}
+              showQty={showQty}
+              showUnit={showUnit}
+              invKw={invKw}
+              compact={comparison}
+            />
+          </div>
+        ))}
 
-        <p className="text-xs text-gray-400 mt-3 italic">
+        <p className={`${comparison ? 'text-[9px] mt-1.5' : 'text-xs mt-3'} text-gray-400 italic`}>
           * All materials are supplied with manufacturer warranty cards. Exact make/model subject to availability at time of procurement.
-          {hasAlternatives ? ' Where OR is shown, alternative system options with different pricing may be offered.' : ''}
+          {comparison || hasAlternatives ? ' Where OR is shown, alternative system options with different pricing may be offered.' : ''}
         </p>
 
         <ProposalNoteBlock placement="bill_of_materials" proposalNote={proposalNote} />

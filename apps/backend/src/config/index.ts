@@ -8,4 +8,5 @@ export const config = {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     rememberMeExpiresIn: process.env.JWT_REMEMBER_ME_EXPIRES_IN || '30d',
   },
+  websiteLeadApiKey: process.env.WEBSITE_LEAD_API_KEY || '',
 } as const;

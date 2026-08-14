@@ -41,7 +41,7 @@ export default function EditQuotationPage() {
   const [gridInflation, setGridInflation] = useState('3');
   const [peakSunHours, setPeakSunHours] = useState('4');
   const [efficiency, setEfficiency] = useState('0.8');
-  const [lifeYears, setLifeYears] = useState('25');
+  const [lifeYears, setLifeYears] = useState('30');
   const [emiRate, setEmiRate] = useState('9');
 
   const load = useCallback(async () => {
@@ -61,7 +61,7 @@ export default function EditQuotationPage() {
       setGridInflation(val(fd.gridInflationPct ?? fd.grid_inflation_pct) || '3');
       setPeakSunHours(val(fd.peakSunHours ?? fd.peak_sun_hours) || '4');
       setEfficiency(val(fd.systemEfficiency ?? fd.system_efficiency) || '0.8');
-      setLifeYears(val(fd.systemLifeYears ?? fd.system_life_years) || '25');
+      setLifeYears(val(fd.systemLifeYears ?? fd.system_life_years) || '30');
       setEmiRate(val(fd.emiRatePct ?? fd.emi_rate_pct) || '9');
     } catch {
       setError('Failed to load quotation');

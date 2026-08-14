@@ -154,7 +154,7 @@ async function main() {
     { key: 'panel_warranty_years', label: 'Panel Warranty',    value: 25,   unit: 'years',  category: 'general',   description: 'Solar panel performance warranty years shown in quotation' },
     { key: 'grid_inflation_pct',  label: 'Grid Inflation Rate', value: 3,  unit: '%/yr',   category: 'financial', description: 'Annual electricity tariff increase rate used for ROI projections' },
     { key: 'emi_rate_pct',        label: 'EMI Interest Rate',  value: 9,    unit: '%',      category: 'financial', description: 'Annual interest rate used for all loan / EMI calculations' },
-    { key: 'system_life_years',   label: 'System Life',        value: 25,   unit: 'years',  category: 'general',   description: 'Expected useful life of the solar system used for ROI calculations' },
+    { key: 'system_life_years',   label: 'System Life',        value: 30,   unit: 'years',  category: 'general',   description: 'Expected useful life of the solar system used for ROI calculations' },
     { key: 'electricity_rate',    label: 'Default Electricity Rate', value: 8, unit: '₹/kWh', category: 'financial', description: 'Default electricity tariff per unit used when salesperson does not enter one' },
   ];
 
@@ -333,14 +333,14 @@ async function main() {
         ],
         introLetterBody: [
           "We are delighted to present this detailed proposal for the installation of a {{system_size}} kW Grid-Connected Rooftop Solar Power System at your premises. At Rolling Energy, we specialize in delivering turnkey solar solutions that combine cutting-edge technology, premium materials, and expert engineering to maximize your return on investment.",
-          "This proposal has been prepared after careful consideration of your energy consumption patterns, roof space availability, and local grid conditions. The system outlined herein is designed to significantly reduce your electricity bills, contribute to a cleaner environment, and deliver a strong financial return over its 25-year operational life.",
+          "This proposal has been prepared after careful consideration of your energy consumption patterns, roof space availability, and local grid conditions. The system outlined herein is designed to significantly reduce your electricity bills, contribute to a cleaner environment, and deliver a strong financial return over its 30-year operational life.",
           "The proposal includes a complete Bill of Materials, detailed cost breakdown, government subsidy calculations under the PM Surya Ghar Muft Bijli Yojana scheme, and a comprehensive ROI analysis with EMI financing options tailored to your needs.",
           "We invite you to review this proposal and welcome any queries or clarifications you may have. Our technical team is available for a detailed walkthrough at your convenience.",
           "We look forward to partnering with you on your journey towards energy independence and sustainable savings.",
         ],
         aboutParagraphs: [
           "Rolling Energy is a premier Solar EPC (Engineering, Procurement & Construction) company committed to delivering world-class rooftop and ground-mounted solar solutions across India. Founded by industry veterans, we bring decades of combined experience in power systems, project management, and renewable energy.",
-          "We partner with India's leading panel and inverter manufacturers to source only BIS-certified equipment, ensuring every system we install delivers peak performance for 25+ years with minimal maintenance.",
+          "We partner with India's leading panel and inverter manufacturers to source only BIS-certified equipment, ensuring every system we install delivers peak performance for 30+ years with minimal maintenance.",
           "From a single rooftop installation to large commercial arrays, our integrated approach covers every stage — site survey, system design, procurement, installation, net metering registration, and ongoing AMC — under one roof.",
         ],
         aboutMission: "To accelerate India's transition to clean, renewable energy by making solar power accessible, affordable, and reliable for every home and business.",
